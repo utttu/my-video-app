@@ -8,6 +8,7 @@ const socket = io("https://my-video-server.onrender.com");
 
 export default function Home() {
   const [stream, setStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null); // <--- NEW ADDITION
   const [me, setMe] = useState("");
   const [callUser, setCallUser] = useState("");
   const [callAccepted, setCallAccepted] = useState(false);
@@ -57,9 +58,10 @@ export default function Home() {
 
     peer.on("stream", (currentStream) => {
       addLog("Received User Stream!");
-      if (userVideo.current) {
+      setRemoteStream(currentStream); // <--- CHANGED THIS
+      /*if (userVideo.current) {
         userVideo.current.srcObject = currentStream;
-      }
+      }*/
     });
 
     peer.on("error", (err) => {
@@ -104,9 +106,10 @@ export default function Home() {
 
     peer.on("stream", (currentStream) => {
       addLog("Received Guest Stream!");
-      if (userVideo.current) {
+      setRemoteStream(currentStream); // <--- CHANGED THIS
+      /*if (userVideo.current) {
         userVideo.current.srcObject = currentStream;
-      }
+      }*/
     });
 
     peer.on("error", (err) => {
@@ -171,7 +174,12 @@ export default function Home() {
         myVideo.current.srcObject = stream;
     }
   }, [stream]);
-
+// NEW: Force remote video to play whenever it arrives
+  useEffect(() => {
+    if (remoteStream && userVideo.current) {
+        userVideo.current.srcObject = remoteStream;
+    }
+  }, [remoteStream, callAccepted]); // Re-run when stream arrives or call connects
   return (
     <div style={styles.container}>
       <h1 style={styles.header}>Video Call Test</h1>
