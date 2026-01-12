@@ -33,10 +33,16 @@ export default function Home() {
     setStatus("connected");
     
     const peer = new SimplePeer({
-      initiator: false,
-      trickle: false,
-      stream: stream,
-    });
+  initiator: false,
+  trickle: false,
+  stream: stream,
+  config: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:global.stun.twilio.com:3478" }
+    ]
+  }
+});
 
     peer.on("signal", (data) => {
       socket.emit("answerCall", { signal: data, to: callUser });
@@ -57,11 +63,17 @@ export default function Home() {
     
     setStatus("calling"); // Show "Calling..." feedback
 
-    const peer = new SimplePeer({
-      initiator: true,
-      trickle: false,
-      stream: stream,
-    });
+   const peer = new SimplePeer({
+  initiator: true,
+  trickle: false,
+  stream: stream,
+  config: { // <--- ADD THIS BLOCK
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:global.stun.twilio.com:3478" }
+    ]
+  }
+});
 
     peer.on("signal", (data) => {
       socket.emit("callUser", {
@@ -90,13 +102,24 @@ export default function Home() {
   // --- 2. SETUP & LISTENERS ---
 
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    // Standard constraints for mobile compatibility
+    navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" }, // Forces front camera on mobile
+        audio: true 
+    })
       .then((currentStream) => {
         setStream(currentStream);
         if (myVideo.current) {
             myVideo.current.srcObject = currentStream;
         }
+      })
+      .catch((err) => {
+          // THIS IS IMPORTANT: Show us why it failed
+          alert("Camera Error: " + err.message); 
+          console.error(err);
       });
+
+    // ... (rest of the socket code) ...
 
     socket.on("connect", () => {
         setMe(socket.id);
@@ -195,11 +218,21 @@ const styles = {
         display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px',
         width: '100%', maxWidth: '800px', marginBottom: '30px'
     },
-    videoWrapper: {
-        flex: '1 1 300px', position: 'relative', minWidth: '280px',
-        background: 'black', borderRadius: '10px', overflow: 'hidden', aspectRatio: '4/3'
+   videoWrapper: {
+        flex: '1 1 300px', 
+        position: 'relative', 
+        minWidth: '280px',
+        background: 'black', 
+        borderRadius: '10px', 
+        overflow: 'hidden', 
+        minHeight: '250px', // <--- ADD THIS (Forces box to be open)
     },
-    video: { width: '100%', height: '100%', objectFit: 'cover' },
+    video: { 
+        width: '100%', 
+        height: '100%', 
+        objectFit: 'cover',
+        transform: 'scaleX(-1)' // <--- Optional: Mirrors your camera like a selfie
+    },
     videoLabel: {
         position: 'absolute', top: '10px', left: '10px', margin: 0,
         backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px 10px', borderRadius: '4px', fontSize: '0.8rem'
