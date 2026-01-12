@@ -14,13 +14,15 @@ export default function Home() {
   const [callEnded, setCallEnded] = useState(false);
   const [name, setName] = useState("");
   const [status, setStatus] = useState("idle");
-  const [logs, setLogs] = useState([]); // <--- NEW: On-screen logs
+  const [logs, setLogs] = useState([]);
   
   const myVideo = useRef();
   const userVideo = useRef();
   const connectionRef = useRef();
+  
+  // FIX: Use a Ref to track the stream so the socket listener always sees the real value
+  const streamRef = useRef();
 
-  // Helper to print logs to screen
   const addLog = (message) => {
     console.log(message);
     setLogs((prev) => [...prev, message]);
@@ -30,18 +32,18 @@ export default function Home() {
     setCallAccepted(true);
     setStatus("connected");
     
-    // Check if we have a stream before answering
-    if (!stream) {
-        addLog("ERROR: No stream found when answering!");
+    // FIX: Check streamRef instead of stream state
+    if (!streamRef.current) {
+        addLog("CRITICAL ERROR: Camera not ready yet. Cannot answer.");
         return;
     }
 
-    addLog("Answering call...");
+    addLog("Answering call with stream...");
 
     const peer = new SimplePeer({
       initiator: false,
       trickle: false,
-      stream: stream,
+      stream: streamRef.current, // Use the Ref here
       config: {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
@@ -50,12 +52,12 @@ export default function Home() {
       }
     });
 
-    peer.on("signal", (data) => {
-      socket.emit("answerCall", { signal: data, to: callUser });
+    peer.on("signal", (signal) => {
+      socket.emit("answerCall", { signal: signal, to: callUser });
     });
 
     peer.on("stream", (currentStream) => {
-      addLog("Received User Stream!"); // <--- Debug
+      addLog("Received User Stream!");
       if (userVideo.current) {
         userVideo.current.srcObject = currentStream;
       }
@@ -71,13 +73,19 @@ export default function Home() {
 
   const callId = (id) => {
     if (!id) return alert("Please enter an ID");
+    
+    if (!streamRef.current) {
+        alert("Wait for your camera to load first!");
+        return;
+    }
+
     setStatus("calling");
     addLog("Starting Call...");
 
     const peer = new SimplePeer({
       initiator: true,
       trickle: false,
-      stream: stream,
+      stream: streamRef.current, // Use the Ref here
       config: {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
@@ -119,12 +127,16 @@ export default function Home() {
   useEffect(() => {
     addLog("Requesting Camera...");
     navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" }, // Force front camera
+        video: { facingMode: "user" }, 
         audio: true 
     })
       .then((currentStream) => {
         addLog("Camera Access Granted!");
+        
+        // FIX: Update both State (for screen) and Ref (for logic)
         setStream(currentStream);
+        streamRef.current = currentStream; 
+        
         if (myVideo.current) {
             myVideo.current.srcObject = currentStream;
         }
@@ -144,17 +156,19 @@ export default function Home() {
       setCallUser(data.from);
       setName(data.name);
       setStatus("incoming");
+      
+      // Now this will work because it reads from streamRef
       answerCall(data); 
     });
 
     socket.on("callFailed", () => {
         setStatus("failed");
         addLog("Call Failed: User offline or wrong ID");
-        alert("User is offline or ID is wrong.");
+        alert("User is offline or wrong ID.");
     });
   }, []);
 
-  // Force video refresh when stream is ready
+  // UI Helper: Force video refresh
   useEffect(() => {
     if (stream && myVideo.current) {
         myVideo.current.srcObject = stream;
