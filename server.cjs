@@ -4,7 +4,7 @@ const { Server } = require("socket.io");
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Allow connections from anywhere (for now)
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
@@ -12,24 +12,39 @@ const io = new Server(httpServer, {
 io.on("connection", (socket) => {
   console.log('User connected:', socket.id);
 
-  // When a user asks to join a specific room ID
-  socket.on("join-room", (roomId, userId) => {
-    socket.join(roomId);
-    // Tell everyone else in the room that a new user connected
-    socket.to(roomId).emit("user-connected", userId);
-    
-    console.log(`User ${userId} joined room ${roomId}`);
+  // 1. Send the user their own ID immediately
+  socket.emit("me", socket.id);
 
-    // If someone leaves, tell the others
-    socket.on("disconnect", () => {
-      socket.to(roomId).emit("user-disconnected", userId);
-    });
+  socket.on("disconnect", () => {
+    socket.broadcast.emit("callEnded");
+  });
+
+  // 2. Handle the "Call User" request
+  socket.on("callUser", (data) => {
+    // Check if the user we are calling is actually connected
+    const target = io.sockets.sockets.get(data.userToCall);
+    
+    if (target) {
+        // User exists, send the call signal
+        io.to(data.userToCall).emit("callUser", { 
+            signal: data.signalData, 
+            from: data.from, 
+            name: data.name 
+        });
+    } else {
+        // User does not exist (Offline or Wrong ID), tell the caller
+        io.to(data.from).emit("callFailed");
+    }
+  });
+
+  // 3. Handle the "Answer Call" request
+  socket.on("answerCall", (data) => {
+    io.to(data.to).emit("callAccepted", data.signal);
   });
 });
 
-// Start the signaling server on port 3001 (different from our website port 3000)
+// Start the server on Render's port (or 3001 locally)
 const PORT = process.env.PORT || 3001;
-
 httpServer.listen(PORT, () => {
   console.log(`Signaling Server running on port ${PORT}`);
 });
