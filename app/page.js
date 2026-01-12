@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
 // REPLACE WITH YOUR RENDER URL
-const socket = io("https://my-video-server.onrender.com""); 
+const socket = io("https://my-video-server.onrender.com"); 
 
 export default function Home() {
   const [stream, setStream] = useState(null);
