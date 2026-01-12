@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
 // Connect to our signaling server
-const socket = io("http://localhost:3001");
+const socket = io("https://my-video-server.onrender.com");
 
 export default function Home() {
   const [stream, setStream] = useState(null);
