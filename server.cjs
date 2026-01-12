@@ -28,6 +28,8 @@ io.on("connection", (socket) => {
 });
 
 // Start the signaling server on port 3001 (different from our website port 3000)
-httpServer.listen(3001, () => {
-  console.log("Signaling Server running on http://localhost:3001");
+const PORT = process.env.PORT || 3001;
+
+httpServer.listen(PORT, () => {
+  console.log(`Signaling Server running on port ${PORT}`);
 });
