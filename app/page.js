@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
 // REPLACE WITH YOUR RENDER URL
-const socket = io("https://my-video-server.onrender.com"); 
+const socket = io("https://my-video-server.onrender.com""); 
 
 export default function Home() {
   const [stream, setStream] = useState(null);
@@ -19,31 +19,29 @@ export default function Home() {
   const myVideo = useRef();
   const userVideo = useRef();
   const connectionRef = useRef();
-  
-  // FIX: Use a Ref to track the stream so the socket listener always sees the real value
-  const streamRef = useRef();
+  const streamRef = useRef(); // Tracks local camera
 
   const addLog = (message) => {
     console.log(message);
     setLogs((prev) => [...prev, message]);
   };
 
-  const answerCall = (data) => {
+  // FIX: Accept callerId directly to avoid React State delay
+  const answerCall = (data, callerId) => {
     setCallAccepted(true);
     setStatus("connected");
     
-    // FIX: Check streamRef instead of stream state
     if (!streamRef.current) {
-        addLog("CRITICAL ERROR: Camera not ready yet. Cannot answer.");
+        addLog("CRITICAL ERROR: Camera not ready. Cannot answer.");
         return;
     }
 
-    addLog("Answering call with stream...");
+    addLog(`Answering call from ${callerId}...`);
 
     const peer = new SimplePeer({
       initiator: false,
       trickle: false,
-      stream: streamRef.current, // Use the Ref here
+      stream: streamRef.current,
       config: {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
@@ -53,7 +51,8 @@ export default function Home() {
     });
 
     peer.on("signal", (signal) => {
-      socket.emit("answerCall", { signal: signal, to: callUser });
+      // FIX: Use the passed callerId, NOT the state callUser
+      socket.emit("answerCall", { signal: signal, to: callerId });
     });
 
     peer.on("stream", (currentStream) => {
@@ -80,12 +79,12 @@ export default function Home() {
     }
 
     setStatus("calling");
-    addLog("Starting Call...");
+    addLog(`Calling ${id}...`);
 
     const peer = new SimplePeer({
       initiator: true,
       trickle: false,
-      stream: streamRef.current, // Use the Ref here
+      stream: streamRef.current,
       config: {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
@@ -117,7 +116,7 @@ export default function Home() {
     socket.on("callAccepted", (signal) => {
       setCallAccepted(true);
       setStatus("connected");
-      addLog("Call Accepted by User!");
+      addLog("Call Accepted! Connecting video...");
       peer.signal(signal);
     });
 
@@ -132,8 +131,6 @@ export default function Home() {
     })
       .then((currentStream) => {
         addLog("Camera Access Granted!");
-        
-        // FIX: Update both State (for screen) and Ref (for logic)
         setStream(currentStream);
         streamRef.current = currentStream; 
         
@@ -153,12 +150,12 @@ export default function Home() {
 
     socket.on("callUser", (data) => {
       addLog("Incoming Call from " + data.from);
-      setCallUser(data.from);
+      setCallUser(data.from); // We still set state for UI
       setName(data.name);
       setStatus("incoming");
       
-      // Now this will work because it reads from streamRef
-      answerCall(data); 
+      // FIX: Pass data.from explicitly
+      answerCall(data, data.from); 
     });
 
     socket.on("callFailed", () => {
@@ -168,7 +165,7 @@ export default function Home() {
     });
   }, []);
 
-  // UI Helper: Force video refresh
+  // Force video refresh
   useEffect(() => {
     if (stream && myVideo.current) {
         myVideo.current.srcObject = stream;
@@ -179,12 +176,10 @@ export default function Home() {
     <div style={styles.container}>
       <h1 style={styles.header}>Video Call Test</h1>
       
-      {/* ID Display */}
       <div style={styles.idContainer}>
         <p style={styles.idText}>My ID: {me || "Connecting..."}</p>
       </div>
 
-      {/* Video Area */}
       <div style={styles.videoGrid}>
         <div style={styles.videoWrapper}>
             <p style={styles.videoLabel}>You</p>
@@ -200,7 +195,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Controls */}
       <div style={styles.controls}>
         <input 
             type="text" 
@@ -211,7 +205,6 @@ export default function Home() {
         <button onClick={() => callId(callUser)} style={styles.button}>Call</button>
       </div>
 
-      {/* DEBUG LOGS */}
       <div style={{ marginTop: '20px', width: '90%', background: '#000', color: '#0f0', padding: '10px', fontSize: '10px', fontFamily: 'monospace' }}>
         <p>DEBUG LOGS:</p>
         {logs.map((log, index) => (
