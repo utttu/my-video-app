@@ -23,7 +23,7 @@ export default function Home() {
   const [dragPos, setDragPos] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   
-  // NEW: Friendly Status Messages
+  // Status Messages
   const [endStatus, setEndStatus] = useState(""); 
   
   const dragOffset = useRef({ x: 0, y: 0 });
@@ -54,16 +54,18 @@ export default function Home() {
             }
         };
 
-        // When recorder stops, we AUTOMATICALLY upload
         mediaRecorder.onstop = () => {
             console.log("Recorder stopped. Chunks collected:", chunksRef.current.length);
             uploadRecording(); 
         };
 
-        mediaRecorder.start();
+        // CRITICAL FIX: Collect data every 1 second (1000ms)
+        // This prevents "empty recording" issues on some devices
+        mediaRecorder.start(1000); 
         console.log("Recording started...");
     } catch (err) {
         console.error("Error starting recording:", err);
+        setEndStatus("Rec Error: " + err.message);
     }
   };
 
@@ -71,22 +73,28 @@ export default function Home() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
     } else {
-        // If recording never started or already stopped, still try to upload empty/partial or just reload
-        console.log("Recorder not active. Skipping upload logic.");
-        window.location.href = "/"; // Clean reload
+        // Even if not recording, if we have chunks, try to upload
+        if (chunksRef.current.length > 0) {
+            uploadRecording();
+        } else {
+             setEndStatus("No recording found to save.");
+             setTimeout(() => window.location.href = "/", 3000);
+        }
     }
   };
 
   const uploadRecording = async () => {
     const blob = new Blob(chunksRef.current, { type: "video/webm" });
+    const sizeKB = (blob.size / 1024).toFixed(2);
     
-    // Safety check: If recording is tiny/empty, just reload
-    if (blob.size < 100) {
-        window.location.href = "/"; 
-        return;
+    console.log(`[UPLOAD] Blob size: ${blob.size} bytes`);
+
+    if (blob.size <= 0) {
+        setEndStatus("Error: Recording was empty (0 bytes)");
+        return; // Don't reload, let user see error
     }
 
-    setEndStatus("Saving Call..."); // Friendly message
+    setEndStatus(`Saving Call (${sizeKB} KB)...`);
 
     try {
         const response = await fetch(`${SERVER_URL}/upload`, {
@@ -95,33 +103,29 @@ export default function Home() {
         });
 
         if (response.ok) {
-            setEndStatus("Call Saved Successfully");
+            setEndStatus("✅ Call Saved! Reloading...");
             setTimeout(() => {
-                // RELOAD CLEANLY (No Query Params)
                 window.location.href = "/"; 
-            }, 1500);
+            }, 2000);
         } else {
-            setEndStatus("Error Saving Call");
-            setTimeout(() => window.location.href = "/", 2000);
+            const errText = await response.text();
+            setEndStatus("❌ Server Error: " + errText);
         }
     } catch (error) {
         console.error("Upload error:", error);
-        setEndStatus("Network Error");
-        setTimeout(() => window.location.href = "/", 2000);
+        setEndStatus("❌ Network Error: " + error.message);
     }
   };
 
   // --- UNIFIED END CALL LOGIC ---
   const handleCallEnd = () => {
-      if (callEnded) return; // Prevent double firing
+      if (callEnded) return;
       
       setCallEnded(true);
       setEndStatus("Ending Call...");
       
-      // Destroy Peer Connection
       if(connectionRef.current) connectionRef.current.destroy();
 
-      // Stop Recording (This triggers the 'onstop' event which uploads the file)
       stopRecording();
   };
 
@@ -182,7 +186,6 @@ export default function Home() {
       startRecording(currentStream);
     });
     
-    // Handle peer disconnect (Manual Close)
     peer.on("close", () => {
         handleCallEnd();
     });
@@ -261,7 +264,6 @@ export default function Home() {
       answerCall(data, data.from); 
     });
     
-    // IMPORTANT: Handle server-side disconnect notification
     socket.on("callEnded", () => {
         handleCallEnd();
     });
@@ -324,12 +326,12 @@ export default function Home() {
             Status: {status.toUpperCase()}
           </div>
           
-          {/* FRIENDLY UPLOAD STATUS */}
+          {/* DEBUGGING STATUS MESSAGE */}
           {endStatus && (
             <div style={{
                 backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', 
                 padding: '15px 30px', borderRadius: '30px', fontWeight: 'bold', margin: '20px 0',
-                border: '1px solid #4CAF50'
+                border: '1px solid #4CAF50', textAlign: 'center'
             }}>
                 {endStatus}
             </div>
