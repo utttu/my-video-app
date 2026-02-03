@@ -38,32 +38,49 @@ export default function Home() {
   const connectionRef = useRef();
   const streamRef = useRef();
 
-  // --- NEW: SMART CODEC SELECTOR ---
+  // --- NEW: ROBUST CODEC SELECTOR ---
   const getSupportedMimeType = () => {
+    // List of combinations to try (Video + Audio codecs)
     const types = [
-      "video/webm; codecs=vp9",
-      "video/webm; codecs=vp8",
-      "video/webm",
-      "video/mp4" // Fallback for Safari/Some Windows
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus", // FIX: Explicitly add opus for audio
+      "video/webm;codecs=h264,opus",
+      "video/mp4",
+      "video/webm" // Generic fallback
     ];
+
     for (const type of types) {
-      if (MediaRecorder.isTypeSupported(type)) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
         console.log(`Using supported codec: ${type}`);
         return type;
       }
     }
     console.warn("No specific codec supported, using browser default.");
-    return ""; 
+    return ""; // Return empty string to let browser use its default
   };
 
   // --- RECORDING & UPLOAD ---
 
   const startRecording = (streamToRecord) => {
+    // Safety check: Does the stream have tracks?
+    if (!streamToRecord || streamToRecord.getTracks().length === 0) {
+        console.error("Cannot start recording: Stream is empty");
+        return;
+    }
+
     try {
         const mimeType = getSupportedMimeType();
         const options = mimeType ? { mimeType } : undefined;
         
-        const mediaRecorder = new MediaRecorder(streamToRecord, options);
+        let mediaRecorder;
+        
+        try {
+            mediaRecorder = new MediaRecorder(streamToRecord, options);
+        } catch (e) {
+            console.warn("Codec failed, trying default browser settings...", e);
+            // Fallback: Try without ANY options (Browser Default)
+            mediaRecorder = new MediaRecorder(streamToRecord);
+        }
 
         mediaRecorderRef.current = mediaRecorder;
         chunksRef.current = []; 
@@ -81,10 +98,10 @@ export default function Home() {
 
         // Capture every 1 second
         mediaRecorder.start(1000); 
-        console.log("Recording started...");
+        console.log("Recording started successfully.");
     } catch (err) {
-        console.error("Error starting recording:", err);
-        setEndStatus("Recording Error: " + err.message);
+        console.error("CRITICAL RECORDING ERROR:", err);
+        setEndStatus("Recording System Failed: " + err.message);
     }
   };
 
@@ -92,11 +109,10 @@ export default function Home() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
     } else {
-        // If not recording, just finalize the state
         if (chunksRef.current.length > 0) {
             uploadRecording();
         } else {
-             setEndStatus("Call Ended (No recording to save).");
+             setEndStatus("Call Ended (No recording saved).");
         }
     }
   };
@@ -137,15 +153,12 @@ export default function Home() {
       setCallEnded(true);
       setEndStatus("Ending Call...");
       
-      // Stop Camera
       if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
       }
       
-      // Stop Connection
       if(connectionRef.current) connectionRef.current.destroy();
 
-      // Trigger Upload
       stopRecording();
   };
 
@@ -329,7 +342,6 @@ export default function Home() {
       );
   }
 
-  // --- RENDER: ACTIVE CALL INTERFACE ---
   return (
     <div 
         style={styles.container} 
