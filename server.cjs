@@ -42,6 +42,41 @@ const httpServer = createServer((req, res) => {
             res.end(JSON.stringify({ success: false, error: "Upload Failed" }));
         });
         return;
+
+        
+    }
+
+    if (req.method === "GET" && req.url === "/admin/recordings") {
+        fs.readdir(uploadDir, (err, files) => {
+            if (err) {
+                res.writeHead(500);
+                res.end("Error reading folder");
+                return;
+            }
+            // Simple HTML list
+            const fileLinks = files.map(f => `<li><a href="/recordings/${f}">${f}</a></li>`).join("");
+            const html = `
+                <h1>Call Recordings</h1>
+                <ul>${fileLinks || "<li>No recordings yet</li>"}</ul>
+            `;
+            res.writeHead(200, { "Content-Type": "text/html" });
+            res.end(html);
+        });
+        return;
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/recordings/")) {
+        const filename = req.url.split("/")[2];
+        const filePath = path.join(uploadDir, filename);
+        
+        if (fs.existsSync(filePath)) {
+            res.writeHead(200, { "Content-Type": "video/webm" });
+            fs.createReadStream(filePath).pipe(res);
+        } else {
+            res.writeHead(404);
+            res.end("File not found");
+        }
+        return;
     }
 });
 
