@@ -22,7 +22,10 @@ export default function Home() {
   const [uiVisible, setUiVisible] = useState(true);
   const [dragPos, setDragPos] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState(""); 
+  
+  // NEW: Friendly Status Messages
+  const [endStatus, setEndStatus] = useState(""); 
+  
   const dragOffset = useRef({ x: 0, y: 0 });
   const uiTimer = useRef(null);
 
@@ -51,34 +54,39 @@ export default function Home() {
             }
         };
 
+        // When recorder stops, we AUTOMATICALLY upload
         mediaRecorder.onstop = () => {
-            console.log("Caller stopped. Chunks collected:", chunksRef.current.length);
+            console.log("Recorder stopped. Chunks collected:", chunksRef.current.length);
             uploadRecording(); 
         };
 
         mediaRecorder.start();
-        console.log("Caller started...");
+        console.log("Recording started...");
     } catch (err) {
-        console.error("Error starting Caller:", err);
+        console.error("Error starting recording:", err);
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
+    } else {
+        // If recording never started or already stopped, still try to upload empty/partial or just reload
+        console.log("Recorder not active. Skipping upload logic.");
+        window.location.href = "/"; // Clean reload
     }
   };
 
   const uploadRecording = async () => {
     const blob = new Blob(chunksRef.current, { type: "video/webm" });
-    console.log(`[UPLOAD] Starting upload. Size: ${blob.size} bytes`);
     
-    if (blob.size === 0) {
-        setUploadStatus("Error: Empty Calling");
+    // Safety check: If recording is tiny/empty, just reload
+    if (blob.size < 100) {
+        window.location.href = "/"; 
         return;
     }
 
-    setUploadStatus("Ending... Please Wait...");
+    setEndStatus("Saving Call..."); // Friendly message
 
     try {
         const response = await fetch(`${SERVER_URL}/upload`, {
@@ -87,20 +95,34 @@ export default function Home() {
         });
 
         if (response.ok) {
-            setUploadStatus("Ended Success! Reloading...");
-            // WAIT for success before reloading
+            setEndStatus("Call Saved Successfully");
             setTimeout(() => {
-                window.location.reload();
-            }, 2000);
+                // RELOAD CLEANLY (No Query Params)
+                window.location.href = "/"; 
+            }, 1500);
         } else {
-            const errText = await response.text();
-            setUploadStatus("Ending Failed: " + errText);
-            console.error("Server Error:", errText);
+            setEndStatus("Error Saving Call");
+            setTimeout(() => window.location.href = "/", 2000);
         }
     } catch (error) {
-        console.error("Ending error:", error);
-        setUploadStatus("Network Error: " + error.message);
+        console.error("Upload error:", error);
+        setEndStatus("Network Error");
+        setTimeout(() => window.location.href = "/", 2000);
     }
+  };
+
+  // --- UNIFIED END CALL LOGIC ---
+  const handleCallEnd = () => {
+      if (callEnded) return; // Prevent double firing
+      
+      setCallEnded(true);
+      setEndStatus("Ending Call...");
+      
+      // Destroy Peer Connection
+      if(connectionRef.current) connectionRef.current.destroy();
+
+      // Stop Recording (This triggers the 'onstop' event which uploads the file)
+      stopRecording();
   };
 
   // --- UI INTERACTION ---
@@ -159,6 +181,11 @@ export default function Home() {
       setRemoteStream(currentStream);
       startRecording(currentStream);
     });
+    
+    // Handle peer disconnect (Manual Close)
+    peer.on("close", () => {
+        handleCallEnd();
+    });
 
     peer.signal(data.signal);
     connectionRef.current = peer;
@@ -192,6 +219,10 @@ export default function Home() {
       startRecording(currentStream);
     });
 
+    peer.on("close", () => {
+        handleCallEnd();
+    });
+
     socket.on("callAccepted", (signal) => {
       setCallAccepted(true);
       setStatus("connected");
@@ -199,19 +230,6 @@ export default function Home() {
     });
 
     connectionRef.current = peer;
-  };
-
-  const leaveCall = () => {
-      setCallEnded(true);
-      setUploadStatus("Ending..."); // UI Feedback
-      
-      // Stop recording initiates the upload process
-      stopRecording(); 
-
-      if(connectionRef.current) connectionRef.current.destroy();
-      
-      // REMOVED: window.location.reload() 
-      // Reload now happens ONLY inside uploadRecording() success block
   };
 
   const copyLink = () => {
@@ -243,10 +261,9 @@ export default function Home() {
       answerCall(data, data.from); 
     });
     
+    // IMPORTANT: Handle server-side disconnect notification
     socket.on("callEnded", () => {
-        setCallEnded(true);
-        stopRecording();
-        setRemoteStream(null);
+        handleCallEnd();
     });
 
     return () => {
@@ -305,16 +322,16 @@ export default function Home() {
           
           <div style={styles.statusBadge}>
             Status: {status.toUpperCase()}
-            {callAccepted && !callEnded && <span style={{color:'red', marginLeft: '5px'}}>● REC</span>}
           </div>
           
-          {/* UPDATED: Large, visible upload status */}
-          {uploadStatus && (
+          {/* FRIENDLY UPLOAD STATUS */}
+          {endStatus && (
             <div style={{
-                backgroundColor: 'rgba(0,0,0,0.8)', color: '#4CAF50', 
-                padding: '10px 20px', borderRadius: '5px', fontWeight: 'bold', margin: '10px 0'
+                backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', 
+                padding: '15px 30px', borderRadius: '30px', fontWeight: 'bold', margin: '20px 0',
+                border: '1px solid #4CAF50'
             }}>
-                {uploadStatus}
+                {endStatus}
             </div>
           )}
 
@@ -342,9 +359,11 @@ export default function Home() {
                 </div>
             </div>
           ) : (
-             <button onClick={leaveCall} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
-                 End Call
-             </button>
+             !endStatus && (
+                 <button onClick={handleCallEnd} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
+                     End Call
+                 </button>
+             )
           )}
       </div>
     </div>
