@@ -50,17 +50,24 @@ const httpServer = createServer((req, res) => {
         
     }
 
+   // 2. NEW: List All Recordings (With Debug Info)
     if (req.method === "GET" && req.url === "/admin/recordings") {
+        console.log("Attempting to read directory:", uploadDir); // Log to server console
+
         fs.readdir(uploadDir, (err, files) => {
             if (err) {
-                res.writeHead(500);
-                res.end("Error reading folder");
+                console.error("Read Error:", err);
+                // Print the specific error and path to the browser so we can see it
+                res.writeHead(500, { "Content-Type": "text/plain" });
+                res.end(`DEBUG ERROR:\n\nTrying to read path: ${uploadDir}\n\nSystem Error: ${err.message}\n\nCode: ${err.code}`);
                 return;
             }
+            
             // Simple HTML list
             const fileLinks = files.map(f => `<li><a href="/recordings/${f}">${f}</a></li>`).join("");
             const html = `
                 <h1>Call Recordings</h1>
+                <p><strong>Storage Path:</strong> ${uploadDir}</p>
                 <ul>${fileLinks || "<li>No recordings yet</li>"}</ul>
             `;
             res.writeHead(200, { "Content-Type": "text/html" });
