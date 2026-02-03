@@ -5,12 +5,14 @@ const path = require("path");
 
 
 const RENDER_DISK_PATH = "/recordings-disk";
-const uploadDir = fs.existsSync(RENDER_DISK_PATH) 
-    ? RENDER_DISK_PATH 
-    : path.join(__dirname, "recordings");
-
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
+let uploadDir;
+if (fs.existsSync(RENDER_DISK_PATH)) {
+    uploadDir = RENDER_DISK_PATH;
+    console.log(`[STORAGE] Using Render Disk at: ${uploadDir}`);
+} else {
+    uploadDir = path.join(__dirname, "recordings");
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+    console.log(`[STORAGE] Using Local Folder at: ${uploadDir}`);
 }
 
 // 1. Create HTTP Server with Upload Handler
@@ -30,6 +32,7 @@ const httpServer = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/upload") {
         const filename = `rec-${Date.now()}.webm`;
         const filePath = path.join(uploadDir, filename);
+        console.log(`[UPLOAD START] Receiving file... Saving to: ${filePath}`);
         const writeStream = fs.createWriteStream(filePath);
 
         req.pipe(writeStream);
@@ -52,27 +55,57 @@ const httpServer = createServer((req, res) => {
 
    // 2. NEW: List All Recordings (With Debug Info)
     if (req.method === "GET" && req.url === "/admin/recordings") {
-        console.log("Attempting to read directory:", uploadDir); // Log to server console
-
         fs.readdir(uploadDir, (err, files) => {
             if (err) {
-                console.error("Read Error:", err);
-                // Print the specific error and path to the browser so we can see it
-                res.writeHead(500, { "Content-Type": "text/plain" });
-                res.end(`DEBUG ERROR:\n\nTrying to read path: ${uploadDir}\n\nSystem Error: ${err.message}\n\nCode: ${err.code}`);
+                res.writeHead(500, { "Content-Type": "text/html" });
+                res.end(`<h1>Error Reading Directory</h1><p>${err.message}</p><p>Path: ${uploadDir}</p>`);
                 return;
             }
-            
-            // Simple HTML list
-            const fileLinks = files.map(f => `<li><a href="/recordings/${f}">${f}</a></li>`).join("");
+
+            const fileLinks = files.map(f => `
+                <li style="margin-bottom: 10px;">
+                    <a href="/recordings/${f}" target="_blank">${f}</a> 
+                    <span style="color: #666; font-size: 0.8em;">(${(fs.statSync(path.join(uploadDir, f)).size / 1024 / 1024).toFixed(2)} MB)</span>
+                </li>`
+            ).join("");
+
             const html = `
-                <h1>Call Recordings</h1>
-                <p><strong>Storage Path:</strong> ${uploadDir}</p>
-                <ul>${fileLinks || "<li>No recordings yet</li>"}</ul>
+                <div style="font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
+                    <h1>🎥 Recording Dashboard</h1>
+                    <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <strong>Storage Status:</strong>
+                        <ul style="margin: 5px 0 0 20px;">
+                            <li>Active Path: <code>${uploadDir}</code></li>
+                            <li>Files Found: ${files.length}</li>
+                        </ul>
+                        <br/>
+                        <a href="/admin/test-disk" style="background: #007bff; color: white; padding: 5px 10px; text-decoration: none; border-radius: 4px;">Run Disk Write Test</a>
+                    </div>
+                    
+                    <h3>Saved Recordings:</h3>
+                    <ul>${fileLinks || "<li>No recordings found yet.</li>"}</ul>
+                </div>
             `;
             res.writeHead(200, { "Content-Type": "text/html" });
             res.end(html);
         });
+        return;
+    }
+
+if (req.method === "GET" && req.url === "/admin/test-disk") {
+        const testFile = path.join(uploadDir, `test-${Date.now()}.txt`);
+        try {
+            fs.writeFileSync(testFile, "This is a test file to verify disk permissions.");
+            console.log("[TEST] Write successful");
+            
+            // Redirect back to dashboard
+            res.writeHead(302, { "Location": "/admin/recordings" });
+            res.end();
+        } catch (err) {
+            console.error("[TEST FAILED]", err);
+            res.writeHead(500, { "Content-Type": "text/html" });
+            res.end(`<h1>Disk Write Failed</h1><p>Could not write to <code>${uploadDir}</code></p><pre>${err.message}</pre>`);
+        }
         return;
     }
 
@@ -81,7 +114,11 @@ const httpServer = createServer((req, res) => {
         const filePath = path.join(uploadDir, filename);
         
         if (fs.existsSync(filePath)) {
-            res.writeHead(200, { "Content-Type": "video/webm" });
+            const stat = fs.statSync(filePath);
+            res.writeHead(200, { 
+                "Content-Type": "video/webm",
+                "Content-Length": stat.size
+            });
             fs.createReadStream(filePath).pipe(res);
         } else {
             res.writeHead(404);
