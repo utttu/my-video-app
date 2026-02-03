@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
-// YOUR SERVER URL
+// REPLACE WITH YOUR RENDER URL
 const SERVER_URL = "https://my-video-server.onrender.com";
 const socket = io(SERVER_URL);
 
@@ -22,7 +22,7 @@ export default function Home() {
   const [uiVisible, setUiVisible] = useState(true);
   const [dragPos, setDragPos] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState(""); // NEW: For showing upload progress
+  const [uploadStatus, setUploadStatus] = useState(""); 
   const dragOffset = useRef({ x: 0, y: 0 });
   const uiTimer = useRef(null);
 
@@ -52,7 +52,8 @@ export default function Home() {
         };
 
         mediaRecorder.onstop = () => {
-            uploadRecording(); // TRIGGER UPLOAD ON STOP
+            console.log("Recorder stopped. Chunks collected:", chunksRef.current.length);
+            uploadRecording(); 
         };
 
         mediaRecorder.start();
@@ -70,7 +71,14 @@ export default function Home() {
 
   const uploadRecording = async () => {
     const blob = new Blob(chunksRef.current, { type: "video/webm" });
-    setUploadStatus("Uploading...");
+    console.log(`[UPLOAD] Starting upload. Size: ${blob.size} bytes`);
+    
+    if (blob.size === 0) {
+        setUploadStatus("Error: Empty Recording");
+        return;
+    }
+
+    setUploadStatus("Uploading... Please Wait...");
 
     try {
         const response = await fetch(`${SERVER_URL}/upload`, {
@@ -79,14 +87,19 @@ export default function Home() {
         });
 
         if (response.ok) {
-            setUploadStatus("Upload Success!");
-            setTimeout(() => setUploadStatus(""), 3000);
+            setUploadStatus("Upload Success! Reloading...");
+            // WAIT for success before reloading
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
         } else {
-            setUploadStatus("Upload Failed");
+            const errText = await response.text();
+            setUploadStatus("Upload Failed: " + errText);
+            console.error("Server Error:", errText);
         }
     } catch (error) {
         console.error("Upload error:", error);
-        setUploadStatus("Error Uploading");
+        setUploadStatus("Network Error: " + error.message);
     }
   };
 
@@ -190,13 +203,15 @@ export default function Home() {
 
   const leaveCall = () => {
       setCallEnded(true);
-      stopRecording(); // This will trigger upload
+      setUploadStatus("Processing Video..."); // UI Feedback
+      
+      // Stop recording initiates the upload process
+      stopRecording(); 
+
       if(connectionRef.current) connectionRef.current.destroy();
       
-      // Delay reload to allow upload to start
-      setTimeout(() => {
-          window.location.reload();
-      }, 1000);
+      // REMOVED: window.location.reload() 
+      // Reload now happens ONLY inside uploadRecording() success block
   };
 
   const copyLink = () => {
@@ -293,8 +308,15 @@ export default function Home() {
             {callAccepted && !callEnded && <span style={{color:'red', marginLeft: '5px'}}>● REC</span>}
           </div>
           
-          {/* UPLOAD STATUS INDICATOR */}
-          {uploadStatus && <div style={{color: '#4CAF50', fontSize: '0.8rem'}}>{uploadStatus}</div>}
+          {/* UPDATED: Large, visible upload status */}
+          {uploadStatus && (
+            <div style={{
+                backgroundColor: 'rgba(0,0,0,0.8)', color: '#4CAF50', 
+                padding: '10px 20px', borderRadius: '5px', fontWeight: 'bold', margin: '10px 0'
+            }}>
+                {uploadStatus}
+            </div>
+          )}
 
           {!callAccepted ? (
             <div style={styles.controlBox}>
