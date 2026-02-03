@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
-// KEEPING YOUR PRODUCTION URL
+// REPLACE WITH YOUR RENDER URL
 const socket = io("https://my-video-server.onrender.com"); 
 
 export default function Home() {
@@ -16,6 +16,7 @@ export default function Home() {
   const [name, setName] = useState("");
   const [status, setStatus] = useState("idle");
   const [logs, setLogs] = useState([]);
+  const [isCopied, setIsCopied] = useState(false); // NEW: For copy feedback
   
   const myVideo = useRef();
   const userVideo = useRef();
@@ -26,16 +27,6 @@ export default function Home() {
     console.log(message);
     setLogs((prev) => [...prev, message]);
   };
-
-  // 1. NEW: Check URL for "call" parameter on load
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const callIdParam = params.get('call');
-    if (callIdParam) {
-        setCallUser(callIdParam);
-        addLog(`Link detected. Ready to join ${callIdParam}`);
-    }
-  }, []);
 
   const answerCall = (data, callerId) => {
     setCallAccepted(true);
@@ -81,7 +72,7 @@ export default function Home() {
     if (!id) return alert("Please enter an ID");
     
     if (!streamRef.current) {
-        alert("Wait for your camera to load first!");
+        addLog("Call blocked: Camera not ready yet.");
         return;
     }
 
@@ -128,13 +119,24 @@ export default function Home() {
     connectionRef.current = peer;
   };
 
+  // FIXED: Non-blocking copy function
   const copyLink = () => {
     const link = `${window.location.origin}?call=${me}`;
     navigator.clipboard.writeText(link);
-    alert("Invite link copied! Send it to your friend.");
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000); // Reset button text after 2s
   };
 
+  // NEW: Initialize Camera and Socket
   useEffect(() => {
+    // 1. Check URL for ID
+    const params = new URLSearchParams(window.location.search);
+    const urlCallId = params.get('call');
+    if (urlCallId) {
+        setCallUser(urlCallId);
+        addLog(`Link detected for: ${urlCallId}`);
+    }
+
     addLog("Requesting Camera...");
     navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: "user" }, 
@@ -161,7 +163,7 @@ export default function Home() {
 
     socket.on("callUser", (data) => {
       addLog("Incoming Call from " + data.from);
-      setCallUser(data.from); 
+      setCallUser(data.from);
       setName(data.name);
       setStatus("incoming");
       answerCall(data, data.from); 
@@ -173,7 +175,6 @@ export default function Home() {
         alert("User is offline or wrong ID.");
     });
 
-    // 2. FIX: Cleanup listeners to prevent duplicates on live site
     return () => {
         socket.off("connect");
         socket.off("callUser");
@@ -181,12 +182,27 @@ export default function Home() {
     };
   }, []);
 
+  // NEW: Auto-Join Trigger
+  // Triggers ONLY when we have the Stream, the Socket ID, and a Target ID from URL
+  useEffect(() => {
+    if (stream && me && callUser && status === "idle") {
+        const params = new URLSearchParams(window.location.search);
+        // Only auto-call if the ID came from the URL (to avoid loops)
+        if (params.get('call') === callUser) {
+             addLog("Everything ready. Auto-joining...");
+             callId(callUser);
+        }
+    }
+  }, [stream, me, callUser, status]);
+
+  // Keep local video updated
   useEffect(() => {
     if (stream && myVideo.current) {
         myVideo.current.srcObject = stream;
     }
   }, [stream]);
 
+  // Keep remote video updated
   useEffect(() => {
     if (remoteStream && userVideo.current) {
         userVideo.current.srcObject = remoteStream;
@@ -197,12 +213,11 @@ export default function Home() {
     <div style={styles.container}>
       <h1 style={styles.header}>Video Call Test</h1>
       
-      {/* 3. NEW: Updated ID Container with Copy Button */}
       <div style={styles.idContainer}>
         <p style={styles.idText}>My ID: {me || "Connecting..."}</p>
         {me && (
-            <button onClick={copyLink} style={styles.copyButton}>
-                Copy Invite Link
+            <button onClick={copyLink} style={{...styles.copyButton, background: isCopied ? '#2e7d32' : '#4CAF50'}}>
+                {isCopied ? "Copied!" : "Copy Invite Link"}
             </button>
         )}
       </div>
@@ -226,11 +241,10 @@ export default function Home() {
         <input 
             type="text" 
             placeholder="ID to Call" 
-            value={callUser} // 4. FIX: Bind value to state so URL param shows up
+            value={callUser} 
             onChange={(e) => setCallUser(e.target.value)} 
             style={styles.input}
         />
-        {/* 5. UX Update: Change button text if ID is present */}
         <button onClick={() => callId(callUser)} style={styles.button}>
             {callUser ? "Join Call" : "Call ID"}
         </button>
@@ -251,7 +265,7 @@ const styles = {
     header: { marginBottom: '20px' },
     idContainer: { marginBottom: '20px', background: '#333', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     idText: { margin: 0, fontSize: '0.9rem' },
-    copyButton: { padding: '8px 16px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' },
+    copyButton: { padding: '8px 16px', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', transition: 'background 0.3s' },
     videoGrid: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px', width: '100%', maxWidth: '600px', marginBottom: '30px' },
     videoWrapper: { flex: '1 1 300px', position: 'relative', minWidth: '280px', background: 'black', borderRadius: '10px', overflow: 'hidden', minHeight: '250px' },
     video: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
