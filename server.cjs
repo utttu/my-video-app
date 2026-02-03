@@ -4,7 +4,11 @@ const fs = require("fs"); // 1. Import File System
 const path = require("path");
 
 
-const uploadDir = path.join(__dirname, "recordings");
+const RENDER_DISK_PATH = "/recordings-disk";
+const uploadDir = fs.existsSync(RENDER_DISK_PATH) 
+    ? RENDER_DISK_PATH 
+    : path.join(__dirname, "recordings");
+
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
