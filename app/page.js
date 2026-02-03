@@ -15,8 +15,7 @@ export default function Home() {
   const [callEnded, setCallEnded] = useState(false);
   const [name, setName] = useState("");
   const [status, setStatus] = useState("idle");
-  const [logs, setLogs] = useState([]);
-  const [isCopied, setIsCopied] = useState(false); // NEW: For copy feedback
+  const [isCopied, setIsCopied] = useState(false); 
   
   const myVideo = useRef();
   const userVideo = useRef();
@@ -25,7 +24,7 @@ export default function Home() {
 
   const addLog = (message) => {
     console.log(message);
-    setLogs((prev) => [...prev, message]);
+    // Logs are hidden from UI but useful for debugging if needed
   };
 
   const answerCall = (data, callerId) => {
@@ -33,11 +32,9 @@ export default function Home() {
     setStatus("connected");
     
     if (!streamRef.current) {
-        addLog("CRITICAL ERROR: Camera not ready. Cannot answer.");
+        console.error("Camera not ready.");
         return;
     }
-
-    addLog(`Answering call from ${callerId}...`);
 
     const peer = new SimplePeer({
       initiator: false,
@@ -56,12 +53,7 @@ export default function Home() {
     });
 
     peer.on("stream", (currentStream) => {
-      addLog("Received User Stream!");
       setRemoteStream(currentStream);
-    });
-
-    peer.on("error", (err) => {
-        addLog("Peer Error: " + err.message);
     });
 
     peer.signal(data.signal);
@@ -72,12 +64,11 @@ export default function Home() {
     if (!id) return alert("Please enter an ID");
     
     if (!streamRef.current) {
-        addLog("Call blocked: Camera not ready yet.");
+        alert("Camera not ready yet.");
         return;
     }
 
     setStatus("calling");
-    addLog(`Calling ${id}...`);
 
     const peer = new SimplePeer({
       initiator: true,
@@ -101,68 +92,48 @@ export default function Home() {
     });
 
     peer.on("stream", (currentStream) => {
-      addLog("Received Guest Stream!");
       setRemoteStream(currentStream);
-    });
-
-    peer.on("error", (err) => {
-        addLog("Peer Error: " + err.message);
     });
 
     socket.on("callAccepted", (signal) => {
       setCallAccepted(true);
       setStatus("connected");
-      addLog("Call Accepted! Connecting video...");
       peer.signal(signal);
     });
 
     connectionRef.current = peer;
   };
 
-  // FIXED: Non-blocking copy function
   const copyLink = () => {
     const link = `${window.location.origin}?call=${me}`;
     navigator.clipboard.writeText(link);
     setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000); // Reset button text after 2s
+    setTimeout(() => setIsCopied(false), 2000); 
   };
 
-  // NEW: Initialize Camera and Socket
   useEffect(() => {
-    // 1. Check URL for ID
     const params = new URLSearchParams(window.location.search);
     const urlCallId = params.get('call');
     if (urlCallId) {
         setCallUser(urlCallId);
-        addLog(`Link detected for: ${urlCallId}`);
     }
 
-    addLog("Requesting Camera...");
     navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: "user" }, 
         audio: true 
     })
       .then((currentStream) => {
-        addLog("Camera Access Granted!");
         setStream(currentStream);
         streamRef.current = currentStream; 
-        
         if (myVideo.current) {
             myVideo.current.srcObject = currentStream;
         }
       })
-      .catch((err) => {
-        addLog("CAMERA ERROR: " + err.message);
-        alert("Camera Failed: " + err.message);
-      });
+      .catch((err) => console.error(err));
 
-    socket.on("connect", () => {
-        setMe(socket.id);
-        addLog("Connected to Server: " + socket.id);
-    });
+    socket.on("connect", () => setMe(socket.id));
 
     socket.on("callUser", (data) => {
-      addLog("Incoming Call from " + data.from);
       setCallUser(data.from);
       setName(data.name);
       setStatus("incoming");
@@ -171,7 +142,6 @@ export default function Home() {
 
     socket.on("callFailed", () => {
         setStatus("failed");
-        addLog("Call Failed: User offline or wrong ID");
         alert("User is offline or wrong ID.");
     });
 
@@ -182,91 +152,144 @@ export default function Home() {
     };
   }, []);
 
-  // NEW: Auto-Join Trigger
-  // Triggers ONLY when we have the Stream, the Socket ID, and a Target ID from URL
   useEffect(() => {
     if (stream && me && callUser && status === "idle") {
         const params = new URLSearchParams(window.location.search);
-        // Only auto-call if the ID came from the URL (to avoid loops)
         if (params.get('call') === callUser) {
-             addLog("Everything ready. Auto-joining...");
              callId(callUser);
         }
     }
   }, [stream, me, callUser, status]);
 
-  // Keep local video updated
   useEffect(() => {
-    if (stream && myVideo.current) {
-        myVideo.current.srcObject = stream;
-    }
+    if (stream && myVideo.current) myVideo.current.srcObject = stream;
   }, [stream]);
 
-  // Keep remote video updated
   useEffect(() => {
-    if (remoteStream && userVideo.current) {
-        userVideo.current.srcObject = remoteStream;
-    }
+    if (remoteStream && userVideo.current) userVideo.current.srcObject = remoteStream;
   }, [remoteStream, callAccepted]);
 
+  // --- NEW RENDER LOGIC ---
   return (
     <div style={styles.container}>
-      <h1 style={styles.header}>Lets Do a Call</h1>
-      
-      <div style={styles.idContainer}>
-        <p style={styles.idText}>My ID: {me || "Connecting..."}</p>
-        {me && (
-            <button onClick={copyLink} style={{...styles.copyButton, background: isCopied ? '#2e7d32' : '#4CAF50'}}>
-                {isCopied ? "Copied!" : "Copy Invite Link"}
-            </button>
-        )}
+      {/* 1. Main Video Layer (Full Screen) */}
+      <div style={styles.fullScreenVideo}>
+         {callAccepted && !callEnded && remoteStream ? (
+             /* CONNECTED: Show Guest Full Screen */
+            <video playsInline ref={userVideo} autoPlay style={styles.videoObj} />
+         ) : stream ? (
+             /* WAITING: Show Me Full Screen */
+            <video playsInline muted ref={myVideo} autoPlay style={styles.videoObj} />
+         ) : (
+            <div style={styles.placeholder}>Loading Camera...</div>
+         )}
       </div>
 
-      <div style={styles.videoGrid}>
-        <div style={styles.videoWrapper}>
-            <p style={styles.videoLabel}>You</p>
-            {stream ? (
-                <video playsInline muted ref={myVideo} autoPlay style={styles.video} />
-            ) : <div style={styles.placeholder}>No Camera</div>}
-        </div>
-        <div style={styles.videoWrapper}>
-            <p style={styles.videoLabel}>Guest</p>
-            {callAccepted && !callEnded ? (
-                <video playsInline ref={userVideo} autoPlay style={styles.video} />
-            ) : <div style={styles.placeholder}>{status}</div>}
-        </div>
-      </div>
+      {/* 2. Floating Video Layer (Picture-in-Picture) */}
+      {callAccepted && !callEnded && stream && (
+          <div style={styles.floatingVideo}>
+              <video playsInline muted ref={myVideo} autoPlay style={styles.videoObj} />
+          </div>
+      )}
 
-      <div style={styles.controls}>
-        <input 
-            type="text" 
-            placeholder="ID to Call" 
-            value={callUser} 
-            onChange={(e) => setCallUser(e.target.value)} 
-            style={styles.input}
-        />
-        <button onClick={() => callId(callUser)} style={styles.button}>
-            {callUser ? "Join Call" : "Call ID"}
-        </button>
-      </div>
+      {/* 3. Controls Overlay (Bottom) */}
+      <div style={styles.controlsOverlay}>
+          <h1 style={styles.title}>Lets Do a Call</h1>
+          
+          {/* Status Badge */}
+          <div style={styles.statusBadge}>
+            Status: {status.toUpperCase()}
+          </div>
 
-      
+          {!callAccepted && (
+            <div style={styles.controlBox}>
+                <div style={styles.copyContainer}>
+                    <span style={styles.idText}>ID: {me ? me.substr(0,5) + "..." : "..."}</span>
+                    <button onClick={copyLink} style={styles.miniBtn}>{isCopied ? "Copied" : "Copy Link"}</button>
+                </div>
+                
+                <div style={styles.inputGroup}>
+                    <input 
+                        type="text" 
+                        placeholder="Enter ID..." 
+                        value={callUser} 
+                        onChange={(e) => setCallUser(e.target.value)} 
+                        style={styles.input}
+                    />
+                    <button onClick={() => callId(callUser)} style={styles.joinBtn}>
+                        {callUser ? "Join" : "Call"}
+                    </button>
+                </div>
+            </div>
+          )}
+      </div>
     </div>
   );
 }
 
+// --- NEW MOBILE-FIRST STYLES ---
 const styles = {
-    container: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', minHeight: '100vh', backgroundColor: '#1a1a1a', color: 'white' },
-    header: { marginBottom: '20px' },
-    idContainer: { marginBottom: '20px', background: '#333', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
-    idText: { margin: 0, fontSize: '0.9rem' },
-    copyButton: { padding: '8px 16px', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', transition: 'background 0.3s' },
-    videoGrid: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px', width: '100%', maxWidth: '600px', marginBottom: '30px' },
-    videoWrapper: { flex: '1 1 300px', position: 'relative', minWidth: '280px', background: 'black', borderRadius: '10px', overflow: 'hidden', minHeight: '250px' },
-    video: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
-    videoLabel: { position: 'absolute', top: '10px', left: '10px', margin: 0, backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '4px', fontSize: '0.8rem', zIndex: 10 },
-    placeholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'gray' },
-    controls: { display: 'flex', gap: '10px', width: '100%', maxWidth: '400px' },
-    input: { flex: 1, padding: '10px', borderRadius: '5px', border: 'none', color: 'black' },
-    button: { padding: '10px 20px', borderRadius: '5px', border: 'none', backgroundColor: '#2196F3', color: 'white', cursor: 'pointer' }
+    container: { 
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
+        backgroundColor: '#000', overflow: 'hidden' 
+    },
+    
+    // Video Layers
+    fullScreenVideo: {
+        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
+        zIndex: 1 
+    },
+    floatingVideo: {
+        position: 'absolute', top: '20px', right: '20px', 
+        width: '100px', height: '150px', 
+        backgroundColor: '#333', borderRadius: '10px', overflow: 'hidden', 
+        zIndex: 10, border: '2px solid rgba(255,255,255,0.2)', 
+        boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+    },
+    videoObj: { 
+        width: '100%', height: '100%', objectFit: 'cover', 
+        transform: 'scaleX(-1)' // Mirror effect
+    },
+    placeholder: {
+        width: '100%', height: '100%', display: 'flex', 
+        alignItems: 'center', justifyContent: 'center', color: '#555'
+    },
+
+    // UI Overlay
+    controlsOverlay: {
+        position: 'absolute', bottom: 0, left: 0, width: '100%', 
+        background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', 
+        padding: '20px', paddingBottom: '40px', zIndex: 20,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px'
+    },
+    title: {
+        margin: 0, color: 'white', fontSize: '1.2rem', textShadow: '0 2px 4px rgba(0,0,0,0.5)'
+    },
+    statusBadge: {
+        backgroundColor: 'rgba(255, 255, 255, 0.2)', padding: '5px 10px', 
+        borderRadius: '20px', fontSize: '0.8rem', color: '#ddd'
+    },
+    controlBox: {
+        width: '100%', maxWidth: '350px', backgroundColor: 'rgba(20,20,20,0.8)', 
+        borderRadius: '15px', padding: '15px', backdropFilter: 'blur(10px)'
+    },
+    copyContainer: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+        marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '10px'
+    },
+    idText: { fontSize: '0.9rem', color: '#aaa', fontFamily: 'monospace' },
+    miniBtn: {
+        backgroundColor: '#333', color: 'white', border: 'none', 
+        padding: '5px 10px', borderRadius: '5px', fontSize: '0.7rem', cursor: 'pointer'
+    },
+    inputGroup: { display: 'flex', gap: '10px' },
+    input: {
+        flex: 1, padding: '12px', borderRadius: '8px', border: 'none', 
+        outline: 'none', fontSize: '1rem', background: '#333', color: 'white'
+    },
+    joinBtn: {
+        padding: '0 20px', borderRadius: '8px', border: 'none', 
+        backgroundColor: '#007AFF', color: 'white', fontWeight: 'bold', 
+        fontSize: '1rem', cursor: 'pointer'
+    }
 };
