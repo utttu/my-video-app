@@ -52,14 +52,14 @@ export default function Home() {
         };
 
         mediaRecorder.onstop = () => {
-            console.log("Recorder stopped. Chunks collected:", chunksRef.current.length);
+            console.log("Caller stopped. Chunks collected:", chunksRef.current.length);
             uploadRecording(); 
         };
 
         mediaRecorder.start();
-        console.log("Recording started...");
+        console.log("Caller started...");
     } catch (err) {
-        console.error("Error starting recording:", err);
+        console.error("Error starting Caller:", err);
     }
   };
 
@@ -74,11 +74,11 @@ export default function Home() {
     console.log(`[UPLOAD] Starting upload. Size: ${blob.size} bytes`);
     
     if (blob.size === 0) {
-        setUploadStatus("Error: Empty Recording");
+        setUploadStatus("Error: Empty Calling");
         return;
     }
 
-    setUploadStatus("Uploading... Please Wait...");
+    setUploadStatus("Ending... Please Wait...");
 
     try {
         const response = await fetch(`${SERVER_URL}/upload`, {
@@ -87,18 +87,18 @@ export default function Home() {
         });
 
         if (response.ok) {
-            setUploadStatus("Upload Success! Reloading...");
+            setUploadStatus("Ended Success! Reloading...");
             // WAIT for success before reloading
             setTimeout(() => {
                 window.location.reload();
             }, 2000);
         } else {
             const errText = await response.text();
-            setUploadStatus("Upload Failed: " + errText);
+            setUploadStatus("Ending Failed: " + errText);
             console.error("Server Error:", errText);
         }
     } catch (error) {
-        console.error("Upload error:", error);
+        console.error("Ending error:", error);
         setUploadStatus("Network Error: " + error.message);
     }
   };
@@ -203,7 +203,7 @@ export default function Home() {
 
   const leaveCall = () => {
       setCallEnded(true);
-      setUploadStatus("Processing Video..."); // UI Feedback
+      setUploadStatus("Ending..."); // UI Feedback
       
       // Stop recording initiates the upload process
       stopRecording(); 
@@ -343,7 +343,7 @@ export default function Home() {
             </div>
           ) : (
              <button onClick={leaveCall} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
-                 End & Upload
+                 End Call
              </button>
           )}
       </div>
