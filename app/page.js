@@ -64,7 +64,7 @@ export default function Home() {
   const startRecording = (streamToRecord) => {
     // Safety check: Does the stream have tracks?
     if (!streamToRecord || streamToRecord.getTracks().length === 0) {
-        console.error("Cannot start recording: Stream is empty");
+        console.error("Cannot start calling: Stream is empty");
         return;
     }
 
@@ -92,16 +92,16 @@ export default function Home() {
         };
 
         mediaRecorder.onstop = () => {
-            console.log("Recorder stopped. Uploading...");
+            console.log("Caller stopped. Ending...");
             uploadRecording(); 
         };
 
         // Capture every 1 second
         mediaRecorder.start(1000); 
-        console.log("Recording started successfully.");
+        console.log("Calling started successfully.");
     } catch (err) {
-        console.error("CRITICAL RECORDING ERROR:", err);
-        setEndStatus("Recording System Failed: " + err.message);
+        console.error("CRITICAL Caller ERROR:", err);
+        setEndStatus("Calling System Failed: " + err.message);
     }
   };
 
@@ -112,7 +112,7 @@ export default function Home() {
         if (chunksRef.current.length > 0) {
             uploadRecording();
         } else {
-             setEndStatus("Call Ended (No recording saved).");
+             setEndStatus("Call Ended (Empty).");
         }
     }
   };
@@ -122,11 +122,11 @@ export default function Home() {
     const sizeKB = (blob.size / 1024).toFixed(2);
     
     if (blob.size <= 0) {
-        setEndStatus("Call Ended. (Recording was empty)");
+        setEndStatus("Call Ended. (Call was empty)");
         return;
     }
 
-    setEndStatus(`Saving Call (${sizeKB} KB)...`);
+    setEndStatus(`Ending Call (${sizeKB})...`);
 
     try {
         const response = await fetch(`${SERVER_URL}/upload`, {
@@ -135,7 +135,7 @@ export default function Home() {
         });
 
         if (response.ok) {
-            setEndStatus("✅ Call Saved Successfully");
+            setEndStatus("✅ Call Ended Successfully");
         } else {
             const errText = await response.text();
             setEndStatus("❌ Server Error: " + errText);
