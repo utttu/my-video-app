@@ -3,12 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
-// REPLACE WITH YOUR RENDER URL
+// KEEPING YOUR PRODUCTION URL
 const socket = io("https://my-video-server.onrender.com"); 
 
 export default function Home() {
   const [stream, setStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null); // <--- NEW ADDITION
+  const [remoteStream, setRemoteStream] = useState(null);
   const [me, setMe] = useState("");
   const [callUser, setCallUser] = useState("");
   const [callAccepted, setCallAccepted] = useState(false);
@@ -20,14 +20,23 @@ export default function Home() {
   const myVideo = useRef();
   const userVideo = useRef();
   const connectionRef = useRef();
-  const streamRef = useRef(); // Tracks local camera
+  const streamRef = useRef(); 
 
   const addLog = (message) => {
     console.log(message);
     setLogs((prev) => [...prev, message]);
   };
 
-  // FIX: Accept callerId directly to avoid React State delay
+  // 1. NEW: Check URL for "call" parameter on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const callIdParam = params.get('call');
+    if (callIdParam) {
+        setCallUser(callIdParam);
+        addLog(`Link detected. Ready to join ${callIdParam}`);
+    }
+  }, []);
+
   const answerCall = (data, callerId) => {
     setCallAccepted(true);
     setStatus("connected");
@@ -52,16 +61,12 @@ export default function Home() {
     });
 
     peer.on("signal", (signal) => {
-      // FIX: Use the passed callerId, NOT the state callUser
       socket.emit("answerCall", { signal: signal, to: callerId });
     });
 
     peer.on("stream", (currentStream) => {
       addLog("Received User Stream!");
-      setRemoteStream(currentStream); // <--- CHANGED THIS
-      /*if (userVideo.current) {
-        userVideo.current.srcObject = currentStream;
-      }*/
+      setRemoteStream(currentStream);
     });
 
     peer.on("error", (err) => {
@@ -106,10 +111,7 @@ export default function Home() {
 
     peer.on("stream", (currentStream) => {
       addLog("Received Guest Stream!");
-      setRemoteStream(currentStream); // <--- CHANGED THIS
-      /*if (userVideo.current) {
-        userVideo.current.srcObject = currentStream;
-      }*/
+      setRemoteStream(currentStream);
     });
 
     peer.on("error", (err) => {
@@ -124,6 +126,12 @@ export default function Home() {
     });
 
     connectionRef.current = peer;
+  };
+
+  const copyLink = () => {
+    const link = `${window.location.origin}?call=${me}`;
+    navigator.clipboard.writeText(link);
+    alert("Invite link copied! Send it to your friend.");
   };
 
   useEffect(() => {
@@ -153,11 +161,9 @@ export default function Home() {
 
     socket.on("callUser", (data) => {
       addLog("Incoming Call from " + data.from);
-      setCallUser(data.from); // We still set state for UI
+      setCallUser(data.from); 
       setName(data.name);
       setStatus("incoming");
-      
-      // FIX: Pass data.from explicitly
       answerCall(data, data.from); 
     });
 
@@ -166,26 +172,39 @@ export default function Home() {
         addLog("Call Failed: User offline or wrong ID");
         alert("User is offline or wrong ID.");
     });
+
+    // 2. FIX: Cleanup listeners to prevent duplicates on live site
+    return () => {
+        socket.off("connect");
+        socket.off("callUser");
+        socket.off("callFailed");
+    };
   }, []);
 
-  // Force video refresh
   useEffect(() => {
     if (stream && myVideo.current) {
         myVideo.current.srcObject = stream;
     }
   }, [stream]);
-// NEW: Force remote video to play whenever it arrives
+
   useEffect(() => {
     if (remoteStream && userVideo.current) {
         userVideo.current.srcObject = remoteStream;
     }
-  }, [remoteStream, callAccepted]); // Re-run when stream arrives or call connects
+  }, [remoteStream, callAccepted]);
+
   return (
     <div style={styles.container}>
       <h1 style={styles.header}>Video Call Test</h1>
       
+      {/* 3. NEW: Updated ID Container with Copy Button */}
       <div style={styles.idContainer}>
         <p style={styles.idText}>My ID: {me || "Connecting..."}</p>
+        {me && (
+            <button onClick={copyLink} style={styles.copyButton}>
+                Copy Invite Link
+            </button>
+        )}
       </div>
 
       <div style={styles.videoGrid}>
@@ -207,10 +226,14 @@ export default function Home() {
         <input 
             type="text" 
             placeholder="ID to Call" 
+            value={callUser} // 4. FIX: Bind value to state so URL param shows up
             onChange={(e) => setCallUser(e.target.value)} 
             style={styles.input}
         />
-        <button onClick={() => callId(callUser)} style={styles.button}>Call</button>
+        {/* 5. UX Update: Change button text if ID is present */}
+        <button onClick={() => callId(callUser)} style={styles.button}>
+            {callUser ? "Join Call" : "Call ID"}
+        </button>
       </div>
 
       <div style={{ marginTop: '20px', width: '90%', background: '#000', color: '#0f0', padding: '10px', fontSize: '10px', fontFamily: 'monospace' }}>
@@ -226,14 +249,15 @@ export default function Home() {
 const styles = {
     container: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', minHeight: '100vh', backgroundColor: '#1a1a1a', color: 'white' },
     header: { marginBottom: '20px' },
-    idContainer: { marginBottom: '20px', background: '#333', padding: '10px', borderRadius: '8px' },
+    idContainer: { marginBottom: '20px', background: '#333', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' },
     idText: { margin: 0, fontSize: '0.9rem' },
+    copyButton: { padding: '8px 16px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' },
     videoGrid: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px', width: '100%', maxWidth: '600px', marginBottom: '30px' },
     videoWrapper: { flex: '1 1 300px', position: 'relative', minWidth: '280px', background: 'black', borderRadius: '10px', overflow: 'hidden', minHeight: '250px' },
     video: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
     videoLabel: { position: 'absolute', top: '10px', left: '10px', margin: 0, backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '4px', fontSize: '0.8rem', zIndex: 10 },
     placeholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'gray' },
     controls: { display: 'flex', gap: '10px', width: '100%', maxWidth: '400px' },
-    input: { flex: 1, padding: '10px', borderRadius: '5px', border: 'none' },
+    input: { flex: 1, padding: '10px', borderRadius: '5px', border: 'none', color: 'black' },
     button: { padding: '10px 20px', borderRadius: '5px', border: 'none', backgroundColor: '#2196F3', color: 'white', cursor: 'pointer' }
 };
