@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { io } from "socket.io-client";
 import SimplePeer from "simple-peer";
 
 // REPLACE WITH YOUR RENDER URL
-const socket = io("https://my-video-server.onrender.com"); 
+const socket = io("https://my-video-server.onrender.com");
 
 export default function Home() {
   const [stream, setStream] = useState(null);
@@ -15,21 +15,68 @@ export default function Home() {
   const [callEnded, setCallEnded] = useState(false);
   const [name, setName] = useState("");
   const [status, setStatus] = useState("idle");
-  const [isCopied, setIsCopied] = useState(false); 
+  const [isCopied, setIsCopied] = useState(false);
   
+  // NEW: UI Visibility & Dragging State
+  const [uiVisible, setUiVisible] = useState(true);
+  const [dragPos, setDragPos] = useState({ x: 20, y: 20 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const uiTimer = useRef(null);
+
   const myVideo = useRef();
   const userVideo = useRef();
   const connectionRef = useRef();
-  const streamRef = useRef(); 
+  const streamRef = useRef();
 
-  const addLog = (message) => {
-    console.log(message);
-    // Logs are hidden from UI but useful for debugging if needed
+  // --- UI INTERACTION LOGIC ---
+
+  const showUi = () => {
+    setUiVisible(true);
+    if (uiTimer.current) clearTimeout(uiTimer.current);
+    uiTimer.current = setTimeout(() => {
+        // Only hide if call is connected
+        if (callAccepted && !callEnded) setUiVisible(false);
+    }, 4000); // Hide after 4 seconds of inactivity
   };
+
+  const handlePointerDown = (e) => {
+    // Start dragging the self-view
+    setIsDragging(true);
+    const clientX = e.clientX || e.touches[0].clientX;
+    const clientY = e.clientY || e.touches[0].clientY;
+    
+    // Calculate offset so it doesn't jump to top-left corner
+    dragOffset.current = {
+        x: clientX - (window.innerWidth - dragPos.x - 100), // 100 is width of box
+        y: clientY - dragPos.y
+    };
+  };
+
+  const handlePointerMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault(); // Prevent scrolling while dragging
+
+    const clientX = e.clientX || e.touches[0].clientX;
+    const clientY = e.clientY || e.touches[0].clientY;
+
+    // Calculate new Right/Top positions (sticking to right side logic from original CSS)
+    const newX = window.innerWidth - (clientX - dragOffset.current.x) - 100;
+    const newY = clientY - dragOffset.current.y;
+
+    setDragPos({ x: newX, y: newY });
+  };
+
+  const handlePointerUp = () => {
+    setIsDragging(false);
+  };
+
+  // --- CALL LOGIC ---
 
   const answerCall = (data, callerId) => {
     setCallAccepted(true);
     setStatus("connected");
+    showUi(); // Reset UI timer
     
     if (!streamRef.current) {
         console.error("Camera not ready.");
@@ -40,12 +87,7 @@ export default function Home() {
       initiator: false,
       trickle: false,
       stream: streamRef.current,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:global.stun.twilio.com:3478" }
-        ]
-      }
+      config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
     });
 
     peer.on("signal", (signal) => {
@@ -62,24 +104,16 @@ export default function Home() {
 
   const callId = (id) => {
     if (!id) return alert("Please enter an ID");
-    
-    if (!streamRef.current) {
-        alert("Camera not ready yet.");
-        return;
-    }
+    if (!streamRef.current) return alert("Camera not ready yet.");
 
     setStatus("calling");
+    showUi();
 
     const peer = new SimplePeer({
       initiator: true,
       trickle: false,
       stream: streamRef.current,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:global.stun.twilio.com:3478" }
-        ]
-      }
+      config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
     });
 
     peer.on("signal", (data) => {
@@ -108,38 +142,31 @@ export default function Home() {
     const link = `${window.location.origin}?call=${me}`;
     navigator.clipboard.writeText(link);
     setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000); 
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   useEffect(() => {
+    showUi(); // Initialize timer
+
     const params = new URLSearchParams(window.location.search);
     const urlCallId = params.get('call');
-    if (urlCallId) {
-        setCallUser(urlCallId);
-    }
+    if (urlCallId) setCallUser(urlCallId);
 
-    navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" }, 
-        audio: true 
-    })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true })
       .then((currentStream) => {
         setStream(currentStream);
         streamRef.current = currentStream; 
-        if (myVideo.current) {
-            myVideo.current.srcObject = currentStream;
-        }
+        if (myVideo.current) myVideo.current.srcObject = currentStream;
       })
       .catch((err) => console.error(err));
 
     socket.on("connect", () => setMe(socket.id));
-
     socket.on("callUser", (data) => {
       setCallUser(data.from);
       setName(data.name);
       setStatus("incoming");
       answerCall(data, data.from); 
     });
-
     socket.on("callFailed", () => {
         setStatus("failed");
         alert("User is offline or wrong ID.");
@@ -152,51 +179,58 @@ export default function Home() {
     };
   }, []);
 
+  // Auto-join logic
   useEffect(() => {
     if (stream && me && callUser && status === "idle") {
         const params = new URLSearchParams(window.location.search);
-        if (params.get('call') === callUser) {
-             callId(callUser);
-        }
+        if (params.get('call') === callUser) callId(callUser);
     }
   }, [stream, me, callUser, status]);
 
+  // FIX: Force re-attach video stream when layout changes (Fixes Gray Screen)
   useEffect(() => {
     if (stream && myVideo.current) myVideo.current.srcObject = stream;
-  }, [stream]);
+  }, [stream, callAccepted, callEnded]); // Added callAccepted dependency
 
   useEffect(() => {
     if (remoteStream && userVideo.current) userVideo.current.srcObject = remoteStream;
   }, [remoteStream, callAccepted]);
 
-  // --- NEW RENDER LOGIC ---
   return (
-    <div style={styles.container}>
+    <div 
+        style={styles.container} 
+        onClick={showUi} 
+        onMouseMove={isDragging ? handlePointerMove : showUi}
+        onTouchMove={isDragging ? handlePointerMove : showUi}
+        onMouseUp={handlePointerUp}
+        onTouchEnd={handlePointerUp}
+    >
       {/* 1. Main Video Layer (Full Screen) */}
       <div style={styles.fullScreenVideo}>
          {callAccepted && !callEnded && remoteStream ? (
-             /* CONNECTED: Show Guest Full Screen */
-            <video playsInline ref={userVideo} autoPlay style={styles.videoObj} />
+            <video playsInline ref={userVideo} autoPlay style={styles.videoObjRemote} />
          ) : stream ? (
-             /* WAITING: Show Me Full Screen */
             <video playsInline muted ref={myVideo} autoPlay style={styles.videoObj} />
          ) : (
             <div style={styles.placeholder}>Loading Camera...</div>
          )}
       </div>
 
-      {/* 2. Floating Video Layer (Picture-in-Picture) */}
+      {/* 2. Draggable Self-View (Picture-in-Picture) */}
       {callAccepted && !callEnded && stream && (
-          <div style={styles.floatingVideo}>
+          <div 
+            style={{ ...styles.floatingVideo, top: dragPos.y, right: dragPos.x, cursor: isDragging ? 'grabbing' : 'grab' }}
+            onMouseDown={handlePointerDown}
+            onTouchStart={handlePointerDown}
+          >
               <video playsInline muted ref={myVideo} autoPlay style={styles.videoObj} />
           </div>
       )}
 
-      {/* 3. Controls Overlay (Bottom) */}
-      <div style={styles.controlsOverlay}>
+      {/* 3. Controls Overlay (Fades out) */}
+      <div style={{ ...styles.controlsOverlay, opacity: uiVisible ? 1 : 0, pointerEvents: uiVisible ? 'all' : 'none' }}>
           <h1 style={styles.title}>Lets Do a Call</h1>
           
-          {/* Status Badge */}
           <div style={styles.statusBadge}>
             Status: {status.toUpperCase()}
           </div>
@@ -205,7 +239,9 @@ export default function Home() {
             <div style={styles.controlBox}>
                 <div style={styles.copyContainer}>
                     <span style={styles.idText}>ID: {me ? me.substr(0,5) + "..." : "..."}</span>
-                    <button onClick={copyLink} style={styles.miniBtn}>{isCopied ? "Copied" : "Copy Link"}</button>
+                    <button onClick={(e) => { e.stopPropagation(); copyLink(); }} style={styles.miniBtn}>
+                        {isCopied ? "Copied" : "Copy Link"}
+                    </button>
                 </div>
                 
                 <div style={styles.inputGroup}>
@@ -214,9 +250,10 @@ export default function Home() {
                         placeholder="Enter ID..." 
                         value={callUser} 
                         onChange={(e) => setCallUser(e.target.value)} 
+                        onClick={(e) => e.stopPropagation()} // Prevent hiding UI when typing
                         style={styles.input}
                     />
-                    <button onClick={() => callId(callUser)} style={styles.joinBtn}>
+                    <button onClick={(e) => { e.stopPropagation(); callId(callUser); }} style={styles.joinBtn}>
                         {callUser ? "Join" : "Call"}
                     </button>
                 </div>
@@ -227,40 +264,43 @@ export default function Home() {
   );
 }
 
-// --- NEW MOBILE-FIRST STYLES ---
 const styles = {
     container: { 
         position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
-        backgroundColor: '#000', overflow: 'hidden' 
+        backgroundColor: '#000', overflow: 'hidden', touchAction: 'none' 
     },
-    
-    // Video Layers
     fullScreenVideo: {
         position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-        zIndex: 1 
+        zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: '#1a1a1a' 
     },
     floatingVideo: {
-        position: 'absolute', top: '20px', right: '20px', 
+        position: 'absolute', 
         width: '100px', height: '150px', 
         backgroundColor: '#333', borderRadius: '10px', overflow: 'hidden', 
         zIndex: 10, border: '2px solid rgba(255,255,255,0.2)', 
-        boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+        boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+        touchAction: 'none' // Critical for touch dragging
     },
     videoObj: { 
         width: '100%', height: '100%', objectFit: 'cover', 
-        transform: 'scaleX(-1)' // Mirror effect
+        transform: 'scaleX(-1)' 
+    },
+    // FIX: Remote video on PC uses 'contain' to avoid massive zoom, 'cover' on mobile
+    videoObjRemote: { 
+        width: '100%', height: '100%', 
+        objectFit: typeof window !== 'undefined' && window.innerWidth > 768 ? 'contain' : 'cover'
     },
     placeholder: {
         width: '100%', height: '100%', display: 'flex', 
         alignItems: 'center', justifyContent: 'center', color: '#555'
     },
-
-    // UI Overlay
     controlsOverlay: {
         position: 'absolute', bottom: 0, left: 0, width: '100%', 
-        background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', 
+        background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', 
         padding: '20px', paddingBottom: '40px', zIndex: 20,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px'
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px',
+        transition: 'opacity 0.5s ease-in-out' // Smooth fade
     },
     title: {
         margin: 0, color: 'white', fontSize: '1.2rem', textShadow: '0 2px 4px rgba(0,0,0,0.5)'
