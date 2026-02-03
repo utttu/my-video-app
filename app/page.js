@@ -211,7 +211,7 @@ export default function Home() {
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.header}>Video Call Test</h1>
+      <h1 style={styles.header}>Lets Do a Call</h1>
       
       <div style={styles.idContainer}>
         <p style={styles.idText}>My ID: {me || "Connecting..."}</p>
@@ -250,12 +250,7 @@ export default function Home() {
         </button>
       </div>
 
-      <div style={{ marginTop: '20px', width: '90%', background: '#000', color: '#0f0', padding: '10px', fontSize: '10px', fontFamily: 'monospace' }}>
-        <p>DEBUG LOGS:</p>
-        {logs.map((log, index) => (
-            <div key={index}>{log}</div>
-        ))}
-      </div>
+      
     </div>
   );
 }
