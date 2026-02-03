@@ -38,11 +38,31 @@ export default function Home() {
   const connectionRef = useRef();
   const streamRef = useRef();
 
+  // --- NEW: SMART CODEC SELECTOR ---
+  const getSupportedMimeType = () => {
+    const types = [
+      "video/webm; codecs=vp9",
+      "video/webm; codecs=vp8",
+      "video/webm",
+      "video/mp4" // Fallback for Safari/Some Windows
+    ];
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        console.log(`Using supported codec: ${type}`);
+        return type;
+      }
+    }
+    console.warn("No specific codec supported, using browser default.");
+    return ""; 
+  };
+
   // --- RECORDING & UPLOAD ---
 
   const startRecording = (streamToRecord) => {
     try {
-        const options = { mimeType: "video/webm; codecs=vp9" };
+        const mimeType = getSupportedMimeType();
+        const options = mimeType ? { mimeType } : undefined;
+        
         const mediaRecorder = new MediaRecorder(streamToRecord, options);
 
         mediaRecorderRef.current = mediaRecorder;
@@ -55,17 +75,16 @@ export default function Home() {
         };
 
         mediaRecorder.onstop = () => {
-            console.log("Recorder stopped. Chunks collected:", chunksRef.current.length);
+            console.log("Recorder stopped. Uploading...");
             uploadRecording(); 
         };
 
-        // CRITICAL FIX: Collect data every 1 second (1000ms)
-        // This prevents "empty recording" issues on some devices
+        // Capture every 1 second
         mediaRecorder.start(1000); 
         console.log("Recording started...");
     } catch (err) {
         console.error("Error starting recording:", err);
-        setEndStatus("Rec Error: " + err.message);
+        setEndStatus("Recording Error: " + err.message);
     }
   };
 
@@ -73,12 +92,11 @@ export default function Home() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
     } else {
-        // Even if not recording, if we have chunks, try to upload
+        // If not recording, just finalize the state
         if (chunksRef.current.length > 0) {
             uploadRecording();
         } else {
-             setEndStatus("No recording found to save.");
-             setTimeout(() => window.location.href = "/", 3000);
+             setEndStatus("Call Ended (No recording to save).");
         }
     }
   };
@@ -87,11 +105,9 @@ export default function Home() {
     const blob = new Blob(chunksRef.current, { type: "video/webm" });
     const sizeKB = (blob.size / 1024).toFixed(2);
     
-    console.log(`[UPLOAD] Blob size: ${blob.size} bytes`);
-
     if (blob.size <= 0) {
-        setEndStatus("Error: Recording was empty (0 bytes)");
-        return; // Don't reload, let user see error
+        setEndStatus("Call Ended. (Recording was empty)");
+        return;
     }
 
     setEndStatus(`Saving Call (${sizeKB} KB)...`);
@@ -103,10 +119,7 @@ export default function Home() {
         });
 
         if (response.ok) {
-            setEndStatus("✅ Call Saved! Reloading...");
-            setTimeout(() => {
-                window.location.href = "/"; 
-            }, 2000);
+            setEndStatus("✅ Call Saved Successfully");
         } else {
             const errText = await response.text();
             setEndStatus("❌ Server Error: " + errText);
@@ -124,8 +137,15 @@ export default function Home() {
       setCallEnded(true);
       setEndStatus("Ending Call...");
       
+      // Stop Camera
+      if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
+      // Stop Connection
       if(connectionRef.current) connectionRef.current.destroy();
 
+      // Trigger Upload
       stopRecording();
   };
 
@@ -290,6 +310,26 @@ export default function Home() {
     if (remoteStream && userVideo.current) userVideo.current.srcObject = remoteStream;
   }, [remoteStream, callAccepted]);
 
+  // --- RENDER: CALL ENDED SCREEN ---
+  if (callEnded) {
+      return (
+          <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              height: '100vh', backgroundColor: '#1a1a1a', color: 'white', textAlign: 'center'
+          }}>
+              <h1 style={{fontSize: '2rem', marginBottom: '20px'}}>Call Ended</h1>
+              <div style={{
+                  padding: '20px', borderRadius: '10px', 
+                  backgroundColor: '#333', fontSize: '1.2rem', marginBottom: '30px'
+              }}>
+                  {endStatus || "Processing..."}
+              </div>
+              <p style={{color: '#888'}}>Refresh the page to start a new call.</p>
+          </div>
+      );
+  }
+
+  // --- RENDER: ACTIVE CALL INTERFACE ---
   return (
     <div 
         style={styles.container} 
@@ -326,17 +366,6 @@ export default function Home() {
             Status: {status.toUpperCase()}
           </div>
           
-          {/* DEBUGGING STATUS MESSAGE */}
-          {endStatus && (
-            <div style={{
-                backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', 
-                padding: '15px 30px', borderRadius: '30px', fontWeight: 'bold', margin: '20px 0',
-                border: '1px solid #4CAF50', textAlign: 'center'
-            }}>
-                {endStatus}
-            </div>
-          )}
-
           {!callAccepted ? (
             <div style={styles.controlBox}>
                 <div style={styles.copyContainer}>
@@ -361,11 +390,9 @@ export default function Home() {
                 </div>
             </div>
           ) : (
-             !endStatus && (
-                 <button onClick={handleCallEnd} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
-                     End Call
-                 </button>
-             )
+             <button onClick={handleCallEnd} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
+                 End Call
+             </button>
           )}
       </div>
     </div>
