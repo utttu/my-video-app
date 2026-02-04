@@ -383,7 +383,7 @@ export default function Home() {
                 <div style={styles.copyContainer}>
                     <span style={styles.idText}>ID: {me ? me.substr(0,5) + "..." : "..."}</span>
                     <button onClick={(e) => { e.stopPropagation(); copyLink(); }} style={styles.miniBtn}>
-                        {isCopied ? "Copied" : "Copy Link"}
+                        {isCopied ? "Copied" : "Copy Invite Link"}
                     </button>
                 </div>
                 

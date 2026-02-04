@@ -30,7 +30,10 @@ const httpServer = createServer((req, res) => {
 
     // Handle File Upload
     if (req.method === "POST" && req.url === "/upload") {
-        const filename = `rec-${Date.now()}.webm`;
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+        const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
+        const filename = `rec-${dateStr}_${timeStr}.webm`;
         const filePath = path.join(uploadDir, filename);
         console.log(`[UPLOAD START] Receiving file... Saving to: ${filePath}`);
         const writeStream = fs.createWriteStream(filePath);
@@ -63,14 +66,23 @@ const httpServer = createServer((req, res) => {
             }
 
             const fileLinks = files.map(f => `
-                <li style="margin-bottom: 10px;">
-                    <a href="/recordings/${f}" target="_blank">${f}</a> 
-                    <span style="color: #666; font-size: 0.8em;">(${(fs.statSync(path.join(uploadDir, f)).size / 1024 / 1024).toFixed(2)} MB)</span>
-                </li>`
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 10px;">
+                        <a href="/recordings/${f}" target="_blank" style="color: #007bff; text-decoration: none;">${f}</a>
+                    </td>
+                    <td style="padding: 10px; text-align: right; color: #666; font-size: 0.9em;">
+                        ${(fs.statSync(path.join(uploadDir, f)).size / 1024 / 1024).toFixed(2)} MB
+                    </td>
+                    <td style="padding: 10px; text-align: right;">
+                        <button onclick="downloadFile('${f}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 5px;">Download</button>
+                        <button onclick="renameFile('${f}')" style="background: #ffc107; color: black; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 5px;">Rename</button>
+                        <button onclick="deleteFile('${f}')" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Delete</button>
+                    </td>
+                </tr>`
             ).join("");
 
             const html = `
-                <div style="font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
+                <div style="font-family: sans-serif; padding: 20px; max-width: 900px; margin: 0 auto;">
                     <h1>🎥 Recording Dashboard</h1>
                     <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                         <strong>Storage Status:</strong>
@@ -83,8 +95,69 @@ const httpServer = createServer((req, res) => {
                     </div>
                     
                     <h3>Saved Recordings:</h3>
-                    <ul>${fileLinks || "<li>No recordings found yet.</li>"}</ul>
+                    <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <thead style="background: #f8f9fa;">
+                            <tr>
+                                <th style="padding: 10px; text-align: left; font-weight: bold;">Filename</th>
+                                <th style="padding: 10px; text-align: right; font-weight: bold;">Size</th>
+                                <th style="padding: 10px; text-align: right; font-weight: bold;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${fileLinks || "<tr><td colspan='3' style='padding: 20px; text-align: center; color: #999;'>No recordings found yet.</td></tr>"}
+                        </tbody>
+                    </table>
                 </div>
+
+                <script>
+                    function downloadFile(filename) {
+                        const link = document.createElement('a');
+                        link.href = \`/recordings/\${filename}\`;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+
+                    function renameFile(oldName) {
+                        const newName = prompt("Enter new filename (without .webm):", oldName.replace('.webm', ''));
+                        if (newName && newName.trim()) {
+                            fetch(\`/admin/rename\`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ oldName, newName: newName.trim() + '.webm' })
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (data.success) {
+                                    alert('File renamed successfully!');
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            });
+                        }
+                    }
+
+                    function deleteFile(filename) {
+                        if (confirm(\`Are you sure you want to delete \${filename}?\`)) {
+                            fetch(\`/admin/delete\`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ filename })
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (data.success) {
+                                    alert('File deleted successfully!');
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            });
+                        }
+                    }
+                </script>
             `;
             res.writeHead(200, { "Content-Type": "text/html" });
             res.end(html);
@@ -106,6 +179,75 @@ if (req.method === "GET" && req.url === "/admin/test-disk") {
             res.writeHead(500, { "Content-Type": "text/html" });
             res.end(`<h1>Disk Write Failed</h1><p>Could not write to <code>${uploadDir}</code></p><pre>${err.message}</pre>`);
         }
+        return;
+    }
+
+    // NEW: Delete endpoint
+    if (req.method === "POST" && req.url === "/admin/delete") {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const { filename } = JSON.parse(body);
+                const filePath = path.join(uploadDir, filename);
+
+                // Security: Prevent directory traversal
+                if (!filePath.startsWith(uploadDir)) {
+                    res.writeHead(400, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: "Invalid filename" }));
+                    return;
+                }
+
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    console.log(`[DELETE] Removed: ${filename}`);
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true, message: "File deleted" }));
+                } else {
+                    res.writeHead(404, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: "File not found" }));
+                }
+            } catch (err) {
+                console.error("[DELETE ERROR]", err);
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: err.message }));
+            }
+        });
+        return;
+    }
+
+    // NEW: Rename endpoint
+    if (req.method === "POST" && req.url === "/admin/rename") {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const { oldName, newName } = JSON.parse(body);
+                const oldPath = path.join(uploadDir, oldName);
+                const newPath = path.join(uploadDir, newName);
+
+                // Security: Prevent directory traversal
+                if (!oldPath.startsWith(uploadDir) || !newPath.startsWith(uploadDir)) {
+                    res.writeHead(400, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: "Invalid filename" }));
+                    return;
+                }
+
+                if (fs.existsSync(oldPath)) {
+                    fs.renameSync(oldPath, newPath);
+                    console.log(`[RENAME] ${oldName} -> ${newName}`);
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true, message: "File renamed" }));
+                } else {
+                    res.writeHead(404, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: "File not found" }));
+                }
+            } catch (err) {
+                console.error("[RENAME ERROR]", err);
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: err.message }));
+            }
+        });
         return;
     }
 
