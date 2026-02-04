@@ -17,7 +17,6 @@ export default function Home() {
   const [name, setName] = useState("");
   const [status, setStatus] = useState("idle");
   const [isCopied, setIsCopied] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   
   // UI & Dragging State
   const [uiVisible, setUiVisible] = useState(true);
@@ -31,13 +30,8 @@ export default function Home() {
   const uiTimer = useRef(null);
 
   // Recording Refs
-  //const mediaRecorderRef = useRef(null);
-  //const chunksRef = useRef([]);
-  // Recording Refs
-  const remoteRecorderRef = useRef(null); // Renamed from mediaRecorderRef
-  const localRecorderRef = useRef(null);  // NEW
-  const remoteChunksRef = useRef([]);     // Renamed from chunksRef
-  const localChunksRef = useRef([]);      // NEW
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
   const myVideo = useRef();
   const userVideo = useRef();
@@ -67,18 +61,7 @@ export default function Home() {
 
   // --- RECORDING & UPLOAD ---
 
-const toggleMute = (e) => {
-    if (e) e.stopPropagation(); 
-    if (streamRef.current) {
-        const audioTracks = streamRef.current.getAudioTracks();
-        if (audioTracks.length > 0) {
-            audioTracks[0].enabled = !audioTracks[0].enabled;
-            setIsMuted(!audioTracks[0].enabled);
-        }
-    }
-  };
-
-  /*const startRecording = (streamToRecord) => {
+  const startRecording = (streamToRecord) => {
     // Safety check: Does the stream have tracks?
     if (!streamToRecord || streamToRecord.getTracks().length === 0) {
         console.error("Cannot start calling: Stream is empty");
@@ -120,52 +103,9 @@ const toggleMute = (e) => {
         console.error("CRITICAL Caller ERROR:", err);
         setEndStatus("Calling System Failed: " + err.message);
     }
-  };*/
-
-  const startRecording = (remoteStreamToRecord) => {
-    // We need both streams ready
-    if (!remoteStreamToRecord || !streamRef.current) {
-        console.error("Cannot start calling: Missing a stream");
-        return;
-    }
-
-    try {
-        const mimeType = getSupportedMimeType();
-        const options = mimeType ? { mimeType } : undefined;
-
-        // --- 1. Start Remote Recorder ---
-        try {
-            remoteRecorderRef.current = new MediaRecorder(remoteStreamToRecord, options);
-        } catch (e) {
-            remoteRecorderRef.current = new MediaRecorder(remoteStreamToRecord);
-        }
-        remoteChunksRef.current = [];
-        remoteRecorderRef.current.ondataavailable = (e) => {
-            if (e.data.size > 0) remoteChunksRef.current.push(e.data);
-        };
-        remoteRecorderRef.current.start(1000);
-
-        // --- 2. Start Local Recorder ---
-        try {
-            localRecorderRef.current = new MediaRecorder(streamRef.current, options);
-        } catch (e) {
-            localRecorderRef.current = new MediaRecorder(streamRef.current);
-        }
-        localChunksRef.current = [];
-        localRecorderRef.current.ondataavailable = (e) => {
-            if (e.data.size > 0) localChunksRef.current.push(e.data);
-        };
-        localRecorderRef.current.start(1000);
-
-        console.log("Dual calling started (Local + Remote).");
-
-    } catch (err) {
-        console.error("Calling Error:", err);
-        setEndStatus("Call Failed: " + err.message);
-    }
   };
 
-  /*const stopRecording = () => {
+  const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
     } else {
@@ -175,25 +115,9 @@ const toggleMute = (e) => {
              setEndStatus("Call Ended (Empty).");
         }
     }
-  };*/
-
-  const stopRecording = () => {
-    // Stop Remote
-    if (remoteRecorderRef.current && remoteRecorderRef.current.state === "recording") {
-        remoteRecorderRef.current.stop();
-    }
-    // Stop Local
-    if (localRecorderRef.current && localRecorderRef.current.state === "recording") {
-        localRecorderRef.current.stop();
-    }
-    
-    // Wait slightly for chunks to gather, then upload
-    setTimeout(() => {
-        uploadRecordings();
-    }, 500);
   };
 
-  /*const uploadRecording = async () => {
+  const uploadRecording = async () => {
     const blob = new Blob(chunksRef.current, { type: "video/webm" });
     const sizeKB = (blob.size / 1024).toFixed(2);
     
@@ -219,36 +143,6 @@ const toggleMute = (e) => {
     } catch (error) {
         console.error("Upload error:", error);
         setEndStatus("❌ Network Error: " + error.message);
-    }
-  };*/
-
-  const uploadRecordings = async () => {
-    setEndStatus("Ending Call...");
-
-    // Helper function to upload one blob
-    const uploadSingle = async (chunks, type) => {
-        const blob = new Blob(chunks, { type: "video/webm" });
-        if (blob.size <= 0) return false;
-        
-        await fetch(`${SERVER_URL}/upload`, {
-            method: "POST",
-            headers: { 'x-rec-type': type }, // Send type header
-            body: blob
-        });
-        return true;
-    };
-
-    try {
-        // Upload both concurrently
-        const uploadLocal = uploadSingle(localChunksRef.current, "local");
-        const uploadRemote = uploadSingle(remoteChunksRef.current, "remote");
-
-        await Promise.all([uploadLocal, uploadRemote]);
-        setEndStatus("✅ Both Calls Ended!");
-
-    } catch (error) {
-        console.error("Ending error:", error);
-        setEndStatus("❌ Ending Failed");
     }
   };
 
@@ -492,18 +386,7 @@ const toggleMute = (e) => {
                         {isCopied ? "Copied" : "Copy Invite Link"}
                     </button>
                 </div>
-              
-       
-                <div style={{display: 'flex', justifyContent: 'center', marginBottom: '10px'}}>
-                     <button onClick={toggleMute} style={{
-                         ...styles.miniBtn, 
-                         backgroundColor: isMuted ? '#FF5722' : '#555',
-                         width: '100%'
-                     }}>
-                         {isMuted ? "🔇 Mic Off" : "🎤 Mic On"}
-                     </button>
-                </div>
-               
+                
                 <div style={styles.inputGroup}>
                     <input 
                         type="text" 
@@ -519,20 +402,9 @@ const toggleMute = (e) => {
                 </div>
             </div>
           ) : (
-             !endStatus && (
-                 <div style={{display: 'flex', gap: '15px', marginTop: '20px'}}>
-                     <button onClick={toggleMute} style={{
-                         ...styles.joinBtn, 
-                         backgroundColor: isMuted ? '#FF5722' : '#555' 
-                     }}>
-                        {isMuted ? "Unmute" : "Mute"}
-                     </button>
-
-                     <button onClick={handleCallEnd} style={{...styles.joinBtn, backgroundColor: 'red'}}>
-                         End Call
-                     </button>
-                 </div>
-             )
+             <button onClick={handleCallEnd} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
+                 End Call
+             </button>
           )}
       </div>
     </div>
