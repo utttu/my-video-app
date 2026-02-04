@@ -33,7 +33,13 @@ const httpServer = createServer((req, res) => {
         const now = new Date();
         const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
         const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
-        const filename = `rec-${dateStr}_${timeStr}.webm`;
+
+        //Get type from headers (default to 'unknown' if missing)
+        const recType = req.headers['x-rec-type'] || 'unknown';
+
+        //Append type to filename to prevent collisions
+        const filename = `rec-${dateStr}_${timeStr}_${recType}.webm`;
+        
         const filePath = path.join(uploadDir, filename);
         console.log(`[UPLOAD START] Receiving file... Saving to: ${filePath}`);
         const writeStream = fs.createWriteStream(filePath);
