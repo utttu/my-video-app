@@ -344,7 +344,7 @@ export default function Home() {
 
   useEffect(() => {
     if (remoteStream && userVideo.current) userVideo.current.srcObject = remoteStream;
-    userVideo.current.play().catch(e => console.error("Auto-play error:", e));
+    userVideo.current?.play().catch(e => console.error("Auto-play error:", e));
   }, [remoteStream, callAccepted]);
 
   // --- RENDER: CALL ENDED SCREEN ---
