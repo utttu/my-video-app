@@ -69,10 +69,18 @@ export default function Home() {
     }
 
     try {
-        const mimeType = getSupportedMimeType();
+        const types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/mp4", "video/webm"];
+        const mimeType = ""//getSupportedMimeType();
+        for (const type of types) {
+            if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
+                mimeType = type;
+                break;
+            }
+        }
+
         const options = mimeType ? { mimeType } : undefined;
         
-        let mediaRecorder;
+       /* let mediaRecorder;
         
         try {
             mediaRecorder = new MediaRecorder(streamToRecord, options);
@@ -80,24 +88,39 @@ export default function Home() {
             console.warn("Codec failed, trying default browser settings...", e);
             // Fallback: Try without ANY options (Browser Default)
             mediaRecorder = new MediaRecorder(streamToRecord);
+        }*/
+
+        try {
+            mediaRecorderRef.current = new MediaRecorder(streamToRecord, options);
+        } catch (e) {
+            mediaRecorderRef.current = new MediaRecorder(streamToRecord); 
         }
 
-        mediaRecorderRef.current = mediaRecorder;
+        //mediaRecorderRef.current = mediaRecorder;
         chunksRef.current = []; 
 
-        mediaRecorder.ondataavailable = (event) => {
+       /* mediaRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
                 chunksRef.current.push(event.data);
             }
+        };*/
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
         };
 
-        mediaRecorder.onstop = () => {
+       /* mediaRecorder.onstop = () => {
+            console.log("Caller stopped. Ending...");
+            uploadRecording(); 
+        };*/
+
+        mediaRecorderRef.current.onstop = () => {
             console.log("Caller stopped. Ending...");
             uploadRecording(); 
         };
-
         // Capture every 1 second
-        mediaRecorder.start(1000); 
+        //mediaRecorder.start(1000); 
+        mediaRecorderRef.current.start(1000);
         console.log("Calling started successfully.");
     } catch (err) {
         console.error("CRITICAL Caller ERROR:", err);
@@ -321,6 +344,7 @@ export default function Home() {
 
   useEffect(() => {
     if (remoteStream && userVideo.current) userVideo.current.srcObject = remoteStream;
+    userVideo.current.play().catch(e => console.error("Auto-play error:", e));
   }, [remoteStream, callAccepted]);
 
   // --- RENDER: CALL ENDED SCREEN ---
