@@ -272,7 +272,7 @@ if (req.method === "GET" && req.url === "/admin/test-disk") {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: ["https://www.letsdocall.com","https://my-video-app-peach.vercel.app/", "http://localhost:3000"], // Only allow your app,
+    origin: "*", // Only allow your app,
     methods: ["GET", "POST"]
   }
 });
