@@ -70,7 +70,7 @@ export default function Home() {
 
     try {
         const types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/mp4", "video/webm"];
-        const mimeType = ""//getSupportedMimeType();
+        let mimeType = ""//getSupportedMimeType();
         for (const type of types) {
             if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
                 mimeType = type;
