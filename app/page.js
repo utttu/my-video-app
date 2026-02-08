@@ -236,6 +236,11 @@ const connectionConfig = {
       if(connectionRef.current) connectionRef.current.destroy();
 
       stopRecording();
+
+      // This ensures that when they refresh, it's a fresh start.
+      if (typeof window !== 'undefined') {
+          window.history.replaceState(null, "", window.location.pathname);
+      }
   };
 
   // --- UI INTERACTION ---
