@@ -52,7 +52,12 @@ const connectionConfig = {
        "turns:bn-turn1.xirsys.com:443?transport=tcp",
        "turns:bn-turn1.xirsys.com:5349?transport=tcp"
    ]
-}
+},
+{
+      urls: "turns:turn.letsdocall.com:443?transport=tcp",
+      username: "uttu",        // The one you put in turnserver.conf
+      credential: "12345654321"   // The one you put in turnserver.conf
+    }
   ]
 };
 // Track if the user CLICKED the end button
