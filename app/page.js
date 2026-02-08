@@ -55,6 +55,10 @@ const connectionConfig = {
 }
   ]
 };
+// Track if the user CLICKED the end button
+  const isIntentionalHangup = useRef(false);
+  // Track if THIS user was the one who initiated the call
+  const isInitiator = useRef(false);
   const [stream, setStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [me, setMe] = useState("");
@@ -217,8 +221,10 @@ const connectionConfig = {
   };
 
   // --- UNIFIED END CALL LOGIC ---
-  const handleCallEnd = () => {
-      if (callEnded) return;
+  const handleCallEnd = (e) => {
+    if (e) e.stopPropagation();
+    isIntentionalHangup.current = true; // <--- DO NOT RECONNECT
+    if (callEnded) return;
       
       setCallEnded(true);
       setEndStatus("Ending Call...");
@@ -265,12 +271,43 @@ const connectionConfig = {
   const handlePointerUp = () => setIsDragging(false);
 
   // --- CALL LOGIC ---
+const handleConnectionDrop = () => {
+      // 1. If I clicked "End Call", just stop.
+      if (isIntentionalHangup.current) {
+          setCallEnded(true);
+          setEndStatus("Call Ended");
+          return;
+      }
 
+      // 2. It was an ACCIDENT! Let's reconnect.
+      console.log("Connection dropped accidentally! Attempting reconnect...");
+      
+      // Destroy old peer (cleanup)
+      if (connectionRef.current) connectionRef.current.destroy();
+      
+      if (isInitiator.current) {
+          // I am the Caller -> I Call You Back
+          setEndStatus("Reconnecting..."); // Update UI
+          setStatus("reconnecting");
+          
+          // Wait 2 seconds for sockets to stabilize, then call again
+          setTimeout(() => {
+              if (callUser) callId(callUser); 
+          }, 2000);
+          
+      } else {
+          // I am the Receiver -> I Wait for you
+          setEndStatus("Waiting for reconnection...");
+          setStatus("reconnecting");
+          // I don't do anything; I just wait for your incoming socket signal
+      }
+  };
   const answerCall = (data, callerId) => {
     setCallAccepted(true);
     setStatus("connected");
     showUi(); 
-    
+    isInitiator.current = false; // <--- I AM THE RECEIVER
+    isIntentionalHangup.current = false;
     if (!streamRef.current) return console.error("Camera not ready.");
 
     const peer = new SimplePeer({
@@ -290,7 +327,12 @@ const connectionConfig = {
     });
     
     peer.on("close", () => {
-        handleCallEnd();
+        
+        handleConnectionDrop(); // Trigger reconnect logic
+    });
+    peer.on("error", (err) => {
+        console.log("Peer Error:", err);
+        handleConnectionDrop(); // Trigger reconnect logic
     });
 
     peer.signal(data.signal);
@@ -300,6 +342,10 @@ const connectionConfig = {
   const callId = (id) => {
     if (!id) return alert("Please enter an ID");
     if (!streamRef.current) return alert("Camera not ready yet.");
+
+    // ... checks ...
+    isInitiator.current = true; // <--- I AM THE CALLER
+    isIntentionalHangup.current = false;
 
     setStatus("calling");
     showUi();
@@ -326,9 +372,12 @@ const connectionConfig = {
     });
 
     peer.on("close", () => {
-        handleCallEnd();
+        handleConnectionDrop(); // Trigger reconnect logic
     });
-
+    peer.on("error", (err) => {
+        console.log("Peer Error:", err);
+        handleConnectionDrop(); // Trigger reconnect logic
+    });
     socket.on("callAccepted", (signal) => {
       setCallAccepted(true);
       setStatus("connected");
