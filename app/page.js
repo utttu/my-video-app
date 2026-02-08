@@ -54,7 +54,7 @@ const connectionConfig = {
    ]
 },
 {
-      urls: "turns:turn.letsdocall.com:443?transport=tcp",
+      urls: "turns:turn.letsdocall.com:8443?transport=tcp",
       username: "uttu",        // The one you put in turnserver.conf
       credential: "12345654321"   // The one you put in turnserver.conf
     }
