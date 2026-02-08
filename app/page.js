@@ -400,7 +400,17 @@ const handleConnectionDrop = () => {
     const urlCallId = params.get('call');
     if (urlCallId) setCallUser(urlCallId);
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true })
+    navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            facingMode: "user",
+            // 720p (HD) - Sharp enough for YouTube/Laptop viewing
+            width: { ideal: 1280 },  
+            height: { ideal: 720 },
+            // 24fps is the "Cinema Standard". It looks natural and saves 20% data vs 30fps
+            frameRate: { ideal: 24, max: 30 } 
+        }, 
+        audio: true 
+    })
       .then((currentStream) => {
         setStream(currentStream);
         streamRef.current = currentStream; 
