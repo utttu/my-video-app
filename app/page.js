@@ -276,7 +276,7 @@ const connectionConfig = {
   const handlePointerUp = () => setIsDragging(false);
 
   // --- CALL LOGIC ---
-const handleConnectionDrop = () => {
+    const handleConnectionDrop = () => {
       // 1. If I clicked "End Call", just stop.
       if (isIntentionalHangup.current) {
           setCallEnded(true);
@@ -287,15 +287,22 @@ const handleConnectionDrop = () => {
       // 2. It was an ACCIDENT! Let's reconnect.
       console.log("Connection dropped accidentally! Attempting reconnect...");
       
+      // --- FIX: SAVE THE RECORDING BEFORE RESTARTING ---
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          console.log("Calling partial caller before reconnect...");
+          mediaRecorderRef.current.requestData(); // Flush last chunk
+          mediaRecorderRef.current.stop(); // This triggers onstop -> uploadRecording
+      }
+      // -------------------------------------------------
+
       // Destroy old peer (cleanup)
       if (connectionRef.current) connectionRef.current.destroy();
       
       if (isInitiator.current) {
           // I am the Caller -> I Call You Back
-          setEndStatus("Reconnecting..."); // Update UI
+          setEndStatus("Reconnecting..."); 
           setStatus("reconnecting");
           
-          // Wait 2 seconds for sockets to stabilize, then call again
           setTimeout(() => {
               if (callUser) callId(callUser); 
           }, 2000);
@@ -304,7 +311,6 @@ const handleConnectionDrop = () => {
           // I am the Receiver -> I Wait for you
           setEndStatus("Waiting for reconnection...");
           setStatus("reconnecting");
-          // I don't do anything; I just wait for your incoming socket signal
       }
   };
   const answerCall = (data, callerId) => {
