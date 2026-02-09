@@ -518,7 +518,7 @@ const connectionConfig = {
       )}
 
       <div style={{ ...styles.controlsOverlay, opacity: uiVisible ? 1 : 0, pointerEvents: uiVisible ? 'all' : 'none' }}>
-          <h1 style={styles.title}>Lets Do a Call</h1>
+          <h1 style={styles.title}>Lets Do Call</h1>
           
           <div style={styles.statusBadge}>
             Status: {status.toUpperCase()}

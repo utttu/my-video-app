@@ -5,6 +5,18 @@ const path = require("path");
 
 
 const RENDER_DISK_PATH = "/recordings-disk";
+const ADMIN_USER = process.env.ADMIN_USER;
+const ADMIN_PASS = process.env.ADMIN_PASS;
+
+const checkAuth = (req, res) => {
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+    if (login === ADMIN_USER && password === ADMIN_PASS) return true;
+
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Admin Area"' });
+    res.end('Authentication required.');
+    return false;
+};
 let uploadDir;
 if (fs.existsSync(RENDER_DISK_PATH)) {
     uploadDir = RENDER_DISK_PATH;
