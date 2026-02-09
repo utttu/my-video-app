@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const fs = require("fs"); // 1. Import File System
@@ -39,7 +40,9 @@ const httpServer = createServer((req, res) => {
         res.end();
         return;
     }
-
+if (req.url.startsWith("/admin")) {
+        if (!checkAuth(req, res)) return;
+    }
     // Handle File Upload
     if (req.method === "POST" && req.url === "/upload") {
         const now = new Date();
