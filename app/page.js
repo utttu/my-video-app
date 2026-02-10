@@ -198,14 +198,14 @@ const connectionConfig = {
 
   const uploadRecording = async () => {
     const blob = new Blob(chunksRef.current, { type: "video/webm" });
-    const sizeKB = (blob.size / 1024).toFixed(2);
+    const sizeKB = (blob.size / 1024000).toFixed(2);
     
     if (blob.size <= 0) {
         setEndStatus("Call Ended. (Call was empty)");
         return;
     }
 
-    setEndStatus(`Ending Call (${sizeKB})...`);
+    setEndStatus(`Ending Call (${sizeKB}).`);
 
     try {
         const response = await fetch(`${SERVER_URL}/upload`, {
@@ -220,7 +220,7 @@ const connectionConfig = {
             setEndStatus("❌ Server Error: " + errText);
         }
     } catch (error) {
-        console.error("Upload error:", error);
+        console.error("Network error:", error);
         setEndStatus("❌ Network Error: " + error.message);
     }
   };
