@@ -527,25 +527,13 @@ const connectionConfig = {
           {!callAccepted ? (
             <div style={styles.controlBox}>
                 <div style={styles.copyContainer}>
-                    <span style={styles.idText}>ID: {me ? me.substr(0,5) + "..." : "..."}</span>
+                    
                     <button onClick={(e) => { e.stopPropagation(); copyLink(); }} style={styles.miniBtn}>
                         {isCopied ? "Copied" : "Copy Invite Link"}
                     </button>
                 </div>
                 
-                <div style={styles.inputGroup}>
-                    <input 
-                        type="text" 
-                        placeholder="Enter ID..." 
-                        value={callUser} 
-                        onChange={(e) => setCallUser(e.target.value)} 
-                        onClick={(e) => e.stopPropagation()} 
-                        style={styles.input}
-                    />
-                    <button onClick={(e) => { e.stopPropagation(); callId(callUser); }} style={styles.joinBtn}>
-                        {callUser ? "Join" : "Call"}
-                    </button>
-                </div>
+               
             </div>
           ) : (
              <button onClick={handleCallEnd} style={{...styles.joinBtn, backgroundColor: 'red', marginTop: '20px'}}>
@@ -606,13 +594,13 @@ const styles = {
         borderRadius: '15px', padding: '15px', backdropFilter: 'blur(10px)'
     },
     copyContainer: {
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-        marginBottom: '10px', borderBottom: '1px solid #333', paddingBottom: '10px'
+        display: 'flex', justifyContent: 'center', alignItems: 'center', 
+        
     },
     idText: { fontSize: '0.9rem', color: '#aaa', fontFamily: 'monospace' },
     miniBtn: {
         backgroundColor: '#333', color: 'white', border: 'none', 
-        padding: '5px 10px', borderRadius: '5px', fontSize: '0.7rem', cursor: 'pointer'
+        padding: '12px 20px', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer',width: '100%'
     },
     inputGroup: { display: 'flex', gap: '10px' },
     input: {
