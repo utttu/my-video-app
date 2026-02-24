@@ -13,47 +13,7 @@ const connectionConfig = {
   iceServers: [
     // Priority 1: Free STUN Server (Google)
     { urls: "stun:stun.l.google.com:19302" },
-
-    // Priority 2: Managed TURN Server (Fallback)
-    // REPLACE THESE VALUES with the ones from your provider (Metered/Twilio/etc.)
     {
-        urls: "stun:stun.relay.metered.ca:80",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:80",
-        username: "adeb7affa5d32f1a9fe75137",
-        credential: "YYyrvAStcJydOYV1",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:80?transport=tcp",
-        username: "adeb7affa5d32f1a9fe75137",
-        credential: "YYyrvAStcJydOYV1",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:443",
-        username: "adeb7affa5d32f1a9fe75137",
-        credential: "YYyrvAStcJydOYV1",
-      },
-      {
-        urls: "turns:global.relay.metered.ca:443?transport=tcp",
-        username: "adeb7affa5d32f1a9fe75137",
-        credential: "YYyrvAStcJydOYV1",
-      },
-      {
-   urls: [ "stun:bn-turn1.xirsys.com" ]
-}, {
-   username: "Pf5K_Yn82liF72dn5sbVvec0Rjt3PKIlWKiEluaPiYffBZaFjJsZKR_b_q6SDWtMAAAAAGmIaM91dHR1",
-   credential: "0098378a-04db-11f1-bf06-0242ac140004",
-   urls: [
-       "turn:bn-turn1.xirsys.com:80?transport=udp",
-       "turn:bn-turn1.xirsys.com:3478?transport=udp",
-       "turn:bn-turn1.xirsys.com:80?transport=tcp",
-       "turn:bn-turn1.xirsys.com:3478?transport=tcp",
-       "turns:bn-turn1.xirsys.com:443?transport=tcp",
-       "turns:bn-turn1.xirsys.com:5349?transport=tcp"
-   ]
-},
-{
       urls: "turns:turn.letsdocall.com:8443?transport=tcp",
       username: "uttu",        // The one you put in turnserver.conf
       credential: "12345654321"   // The one you put in turnserver.conf
